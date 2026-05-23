@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Workspace Monitor</title>
+    <style>
+      :root {
+        --bg: #f3f5f7;
+        --panel: #ffffff;
+        --panel-soft: #f8fafc;
+        --line: #d9e0ea;
+        --line-strong: #c7d0dd;
+        --text: #17202e;
+        --muted: #637083;
+        --soft-text: #8a96a8;
+        --green: #168153;
+        --codex: #2563eb;
+        --gemini: #0f766e;
+        --claude: #b45309;
+        --active: #64748b;
+        --ink: #111827;
+        --shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: 1fr;
+      }
+
+      .button,
+      .refresh {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        color: var(--text);
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .segmented {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        padding: 2px;
+      }
+
+      .seg-button {
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        padding: 6px 8px;
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .seg-button.active {
+        background: #fff;
+        color: var(--text);
+        box-shadow: var(--shadow);
+      }
+
+      .button.primary {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: #fff;
+      }
+
+      .button:disabled {
+        cursor: default;
+        color: var(--soft-text);
+        background: var(--panel-soft);
+      }
+
+      .layout {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 242px minmax(380px, 1fr) minmax(420px, 570px);
+      }
+
+      .pane {
+        min-height: 0;
+        overflow: hidden;
+        background: var(--panel);
+        border-right: 1px solid var(--line);
+      }
+
+      .pane:last-child {
+        border-right: 0;
+      }
+
+      .pane-header {
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .pane-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 780;
+      }
+
+      .count {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .groups,
+      .sessions,
+      .detail {
+        height: calc(100vh - 50px);
+        overflow: auto;
+      }
+
+      .groups {
+        padding: 10px;
+      }
+
+      .group {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text);
+        padding: 10px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .group:hover {
+        background: #f4f7fb;
+      }
+
+      .group.active {
+        background: #eef2f7;
+        border-color: var(--line-strong);
+      }
+
+      .group-name {
+        font-size: 13px;
+        font-weight: 740;
+      }
+
+      .group-path {
+        grid-column: 1 / -1;
+        color: var(--muted);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sessions {
+        padding: 8px;
+        display: grid;
+        align-content: start;
+        gap: 6px;
+      }
+
+      .session-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px 12px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        cursor: pointer;
+        text-align: left;
+      }
+
+      .session-card:hover {
+        border-color: var(--line-strong);
+      }
+
+      .session-card.active {
+        border-color: #9aa8ba;
+        box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.13);
+      }
+
+      .task-main {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        min-width: 0;
+      }
+
+      .task-copy {
+        min-width: 0;
+        display: grid;
+        gap: 3px;
+      }
+
+      .task-side {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+
+      .agent {
+        width: 27px;
+        height: 27px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 800;
+        flex: 0 0 auto;
+      }
+
+      .agent.codex {
+        background: var(--codex);
+      }
+
+      .agent.gemini {
+        background: var(--gemini);
+      }
+
+      .agent.claude {
+        background: var(--claude);
+      }
+
+      .name {
+        min-width: 0;
+        font-size: 14px;
+        font-weight: 760;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 4px 8px;
+        background: #edf8f2;
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 740;
+        white-space: nowrap;
+      }
+
+      .status.recent {
+        background: #fff8e8;
+        color: #a66700;
+      }
+
+      .status.archived {
+        background: #f1f5f9;
+        color: #596579;
+      }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      .summary {
+        color: #3b4657;
+        font-size: 12px;
+        line-height: 1.4;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .meta-row {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+
+      .chip {
+        border: 1px solid #d9e1ec;
+        border-radius: 999px;
+        padding: 4px 8px;
+        color: var(--muted);
+        background: var(--panel-soft);
+        font-size: 12px;
+      }
+
+      .detail {
+        padding: 16px;
+      }
+
+      .detail-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 16px;
+      }
+
+      .detail-title {
+        margin: 0 0 5px;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .detail-subtitle {
+        color: var(--muted);
+        font-size: 13px;
+        word-break: break-all;
+      }
+
+      .detail-actions {
+        display: flex;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+
+      .section {
+        margin-bottom: 16px;
+      }
+
+      .section-title {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 780;
+        text-transform: uppercase;
+      }
+
+      .command-box {
+        display: grid;
+        gap: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 10px;
+      }
+
+      .command-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .command {
+        margin: 0;
+        overflow-x: auto;
+        border-radius: 7px;
+        background: #f1f5f9;
+        padding: 9px;
+        color: #243044;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        white-space: pre;
+      }
+
+      .kv {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .kv-row {
+        display: grid;
+        grid-template-columns: 118px 1fr;
+        min-height: 38px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .kv-row:last-child {
+        border-bottom: 0;
+      }
+
+      .key {
+        padding: 10px;
+        color: var(--muted);
+        background: var(--panel-soft);
+        font-size: 12px;
+      }
+
+      .value {
+        padding: 10px;
+        font-size: 12px;
+        word-break: break-all;
+      }
+
+      .terminal {
+        margin: 0;
+        min-height: 330px;
+        overflow: auto;
+        border: 1px solid #202938;
+        border-radius: 8px;
+        background: #0f1720;
+        color: #d7e1ee;
+        padding: 12px;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .toast {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        opacity: 0;
+        transform: translateY(8px);
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease;
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+        padding: 10px 12px;
+        color: var(--text);
+        font-size: 13px;
+        pointer-events: none;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .empty-state {
+        padding: 20px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+        text-align: center;
+      }
+
+      @media (max-width: 1040px) {
+        .layout {
+          grid-template-columns: 210px minmax(330px, 1fr);
+        }
+
+        .pane.detail-pane {
+          display: none;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .groups {
+          height: auto;
+          display: flex;
+          overflow-x: auto;
+        }
+
+        .group {
+          min-width: 180px;
+        }
+
+        .pane.group-pane {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <main class="layout">
+        <aside class="pane group-pane">
+          <div class="pane-header">
+            <h2 class="pane-title">폴더</h2>
+            <span class="count">경로 기준</span>
+          </div>
+          <nav class="groups" id="groupList" aria-label="Folder groups"></nav>
+        </aside>
+
+        <section class="pane">
+          <div class="pane-header">
+            <h2 class="pane-title">작업</h2>
+            <div class="header-actions">
+              <div class="segmented" aria-label="Task filter">
+                <button class="seg-button active" type="button" data-filter="running">
+                  실행 중
+                </button>
+                <button class="seg-button" type="button" data-filter="recent">
+                  최근
+                </button>
+                <button class="seg-button" type="button" data-filter="archived">
+                  보관
+                </button>
+              </div>
+              <button class="refresh" type="button" id="refreshAll">새로고침</button>
+            </div>
+          </div>
+          <div class="sessions" id="sessionList"></div>
+        </section>
+
+        <section class="pane detail-pane">
+          <div class="pane-header">
+            <h2 class="pane-title">상세</h2>
+            <span class="count" id="detailState">selected</span>
+          </div>
+          <div class="detail">
+            <div class="detail-head">
+              <div>
+                <h1 class="detail-title" id="detailTitle"></h1>
+                <div class="detail-subtitle" id="detailPath"></div>
+              </div>
+              <div class="detail-actions">
+                <button class="button" type="button" id="copyCommand"></button>
+                <button class="button primary" type="button" id="refreshPreview">
+                  미리보기 새로고침
+                </button>
+              </div>
+            </div>
+
+            <section class="section">
+              <h3 class="section-title">실행 정보</h3>
+              <div class="kv" id="runtimeInfo"></div>
+            </section>
+
+            <section class="section">
+              <h3 class="section-title">이동 명령</h3>
+              <div class="command-box">
+                <div class="command-label" id="commandHelp"></div>
+                <pre class="command" id="commandText"></pre>
+              </div>
+            </section>
+
+            <section class="section">
+              <h3 class="section-title">최근 화면</h3>
+              <pre class="terminal" id="previewText"></pre>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast">Copied</div>
+
+    <script>
+      let tasks = [];
+      const sessionList = document.getElementById("sessionList");
+      const groupList = document.getElementById("groupList");
+      const detailTitle = document.getElementById("detailTitle");
+      const detailPath = document.getElementById("detailPath");
+      const detailState = document.getElementById("detailState");
+      const runtimeInfo = document.getElementById("runtimeInfo");
+      const commandText = document.getElementById("commandText");
+      const commandHelp = document.getElementById("commandHelp");
+      const copyCommand = document.getElementById("copyCommand");
+      const refreshPreview = document.getElementById("refreshPreview");
+      const previewText = document.getElementById("previewText");
+      const toast = document.getElementById("toast");
+
+      let selected = null;
+      let filter = "running";
+      let groupFilter = "all";
+
+      function renderList() {
+        sessionList.innerHTML = "";
+        const visibleTasks = filteredTasks();
+        if (!selected || !visibleTasks.some((task) => task.id === selected.id)) {
+          selected = visibleTasks[0] || null;
+        }
+        renderDetail();
+        if (!visibleTasks.length) {
+          sessionList.innerHTML = `<div class="empty-state">${filterLabel(filter)} 작업이 이 폴더에 없습니다.</div>`;
+          return;
+        }
+        for (const task of visibleTasks) {
+          const card = document.createElement("article");
+          card.className = `session-card${selected && task.id === selected.id ? " active" : ""}`;
+          card.tabIndex = 0;
+          card.innerHTML = `
+            <div class="task-main">
+              <div class="agent ${task.agent}">${task.badge}</div>
+              <div class="task-copy">
+                <div class="name">${task.title}</div>
+                <div class="summary">${task.summary}</div>
+              </div>
+            </div>
+            <div class="task-side">
+              <div class="status ${task.bucket === "recent" ? "recent" : task.bucket === "archived" ? "archived" : ""}"><span class="dot"></span>${task.status}</div>
+              <span class="chip">${sourceLabel(task)}</span>
+            </div>
+            <div class="meta-row">
+              <span class="chip">${task.agent}</span>
+              <span class="chip">${task.source === "tmux pane" ? `tmux: ${task.tmux.split(":")[0]}` : sourceLabel(task)}</span>
+              <span class="chip">${task.hasPreview ? "미리보기 가능" : `pid ${task.pid || "-"}`}</span>
+            </div>
+          `;
+          card.addEventListener("click", () => selectTask(task.id));
+          card.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              selectTask(task.id);
+            }
+          });
+          sessionList.appendChild(card);
+        }
+      }
+
+      function renderGroups() {
+        const counts = new Map();
+        for (const task of tasks.filter((task) => task.bucket === filter)) {
+          const group = folderGroup(task.path);
+          counts.set(group.key, {
+            key: group.key,
+            name: group.name,
+            path: group.path,
+            count: (counts.get(group.key)?.count || 0) + 1,
+          });
+        }
+        const groups = [
+          {
+            key: "all",
+            name: "전체",
+            path: "감지된 모든 폴더",
+            count: [...counts.values()].reduce((sum, group) => sum + group.count, 0),
+          },
+          ...[...counts.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        ];
+        if (!groups.some((group) => group.key === groupFilter)) {
+          groupFilter = "all";
+        }
+        groupList.innerHTML = "";
+        for (const group of groups) {
+          const button = document.createElement("button");
+          button.className = `group${group.key === groupFilter ? " active" : ""}`;
+          button.type = "button";
+          button.innerHTML = `
+            <span class="group-name">${group.name}</span>
+            <span class="count">${group.count}</span>
+            <span class="group-path">${group.path}</span>
+          `;
+          button.addEventListener("click", () => {
+            groupFilter = group.key;
+            renderGroups();
+            renderList();
+          });
+          groupList.appendChild(button);
+        }
+      }
+
+      function renderFilters() {
+        document.querySelectorAll("[data-filter]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.filter === filter);
+        });
+      }
+
+      function filteredTasks() {
+        return tasks.filter((task) => {
+          if (task.bucket !== filter) return false;
+          if (groupFilter === "all") return true;
+          return folderGroup(task.path).key === groupFilter;
+        });
+      }
+
+      function folderGroup(path) {
+        if (!path || path === "cwd unavailable") {
+          return { key: "unknown", name: "unknown", path: "cwd unavailable" };
+        }
+        const workspacePrefix = "/Users/kybee/workspace/";
+        if (path.startsWith(workspacePrefix)) {
+          const relative = path.slice(workspacePrefix.length);
+          const name = relative.split("/")[0] || "workspace";
+          return {
+            key: `workspace:${name}`,
+            name,
+            path: `${workspacePrefix}${name}`,
+          };
+        }
+        const parts = path.split("/").filter(Boolean);
+        const name = parts[parts.length - 1] || path;
+        return { key: path, name, path };
+      }
+
+      function sourceLabel(task) {
+        if (task.source === "tmux pane") return "tmux";
+        if (task.source === "metadata") return "metadata";
+        return "process";
+      }
+
+      function filterLabel(value) {
+        if (value === "running") return "실행 중인";
+        if (value === "recent") return "최근";
+        if (value === "archived") return "보관된";
+        return value;
+      }
+
+      function statusLabel(value) {
+        if (value === "running") return "실행 중";
+        if (value === "gone") return "사라짐";
+        if (value === "stopped") return "종료됨";
+        if (value === "archived") return "보관됨";
+        return value || "-";
+      }
+
+      function detailStateLabel(task) {
+        if (task.hasPreview) return "tmux 미리보기";
+        if (task.bucket === "recent") return "최근 기록";
+        if (task.bucket === "archived") return "보관됨";
+        return "프로세스";
+      }
+
+      function selectTask(id) {
+        selected = tasks.find((task) => task.id === id) || tasks[0];
+        renderList();
+        renderDetail();
+      }
+
+      function row(key, value) {
+        return `<div class="kv-row"><div class="key">${key}</div><div class="value">${value || "-"}</div></div>`;
+      }
+
+      function renderDetail() {
+        if (!selected) {
+          detailTitle.textContent = "선택된 작업 없음";
+          detailPath.textContent = "";
+          detailState.textContent = "비어 있음";
+          commandText.textContent = "";
+          commandHelp.textContent = "작업을 선택하면 이동하거나 확인할 명령을 볼 수 있습니다.";
+          copyCommand.textContent = "명령 복사";
+          copyCommand.disabled = true;
+          refreshPreview.disabled = true;
+          runtimeInfo.innerHTML = "";
+          previewText.textContent = "표시할 미리보기가 없습니다.";
+          return;
+        }
+        copyCommand.disabled = false;
+        detailTitle.textContent = selected.title;
+        detailPath.textContent = selected.path;
+        detailState.textContent = detailStateLabel(selected);
+        commandText.textContent = selected.openCommand;
+        commandHelp.textContent = selected.hasPreview
+          ? "SSH 터미널에 붙여넣으면 해당 tmux 세션 화면으로 이동합니다."
+          : "tmux 세션이 아니므로 프로세스 확인 명령만 복사합니다.";
+        copyCommand.textContent = selected.hasPreview
+          ? "이동 명령 복사"
+          : selected.bucket === "archived"
+            ? "경로 명령 복사"
+            : "확인 명령 복사";
+        refreshPreview.disabled = !selected.hasPreview;
+        runtimeInfo.innerHTML = [
+          row("도구", selected.agent),
+          row("상태", statusLabel(selected.status)),
+          row("감지 방식", sourceLabel(selected)),
+          row("프로젝트", selected.path),
+          row("Tmux", selected.tmux),
+          row("PID", selected.pid),
+          row("명령", selected.command),
+        ].join("");
+        previewText.textContent = selected.preview;
+      }
+
+      async function copySelectedCommand() {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(selected.openCommand);
+          } else {
+            const textarea = document.createElement("textarea");
+            textarea.value = selected.openCommand;
+            textarea.setAttribute("readonly", "");
+            textarea.style.position = "fixed";
+            textarea.style.left = "-9999px";
+            textarea.style.top = "0";
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            const copied = document.execCommand("copy");
+            document.body.removeChild(textarea);
+            if (!copied) throw new Error("copy command failed");
+          }
+          showToast("명령을 복사했습니다");
+        } catch {
+          commandText.focus();
+          showToast("복사가 막혔습니다. 명령어를 직접 선택하세요.");
+        }
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        window.setTimeout(() => toast.classList.remove("show"), 1400);
+      }
+
+      copyCommand.addEventListener("click", copySelectedCommand);
+      refreshPreview.addEventListener("click", () => showToast("미리보기를 새로고침했습니다"));
+      document
+        .getElementById("refreshAll")
+        .addEventListener("click", () => loadTasks());
+      document.querySelectorAll("[data-filter]").forEach((button) => {
+        button.addEventListener("click", () => {
+          filter = button.dataset.filter;
+          renderFilters();
+          renderGroups();
+          renderList();
+          renderDetail();
+        });
+      });
+
+      async function loadTasks() {
+        try {
+          const response = await fetch("/api/tasks", { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const payload = await response.json();
+          tasks = payload.tasks || [];
+          selected = tasks.find((task) => selected && task.id === selected.id) || null;
+          renderFilters();
+          renderGroups();
+          renderList();
+          showToast("작업 목록을 새로고침했습니다");
+        } catch (error) {
+          tasks = [];
+          selected = null;
+          renderFilters();
+          renderGroups();
+          renderList();
+          showToast("실제 작업 목록을 불러오지 못했습니다");
+          console.error(error);
+        }
+      }
+
+      loadTasks();
+    </script>
+  </body>
+</html>
