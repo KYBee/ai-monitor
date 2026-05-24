@@ -726,7 +726,8 @@
         const workspacePrefix = "/Users/kybee/workspace/";
         if (path.startsWith(workspacePrefix)) {
           const relative = path.slice(workspacePrefix.length);
-          const name = relative.split("/")[0] || "workspace";
+          const parts = relative.split("/").filter(Boolean);
+          const name = parts.slice(0, Math.min(parts.length, 2)).join("/") || "workspace";
           return {
             key: `workspace:${name}`,
             name,
