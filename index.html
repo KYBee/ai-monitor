@@ -72,23 +72,6 @@
         padding: 2px;
       }
 
-      .seg-button {
-        border: 0;
-        border-radius: 6px;
-        background: transparent;
-        color: var(--muted);
-        padding: 6px 8px;
-        font-size: 12px;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-
-      .seg-button.active {
-        background: #fff;
-        color: var(--text);
-        box-shadow: var(--shadow);
-      }
-
       .button.primary {
         background: var(--ink);
         border-color: var(--ink);
@@ -353,9 +336,7 @@
       }
 
       .detail-actions {
-        display: flex;
-        gap: 8px;
-        flex: 0 0 auto;
+        display: none;
       }
 
       .section {
@@ -368,33 +349,6 @@
         font-size: 12px;
         font-weight: 780;
         text-transform: uppercase;
-      }
-
-      .command-box {
-        display: grid;
-        gap: 8px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #fff;
-        padding: 10px;
-      }
-
-      .command-label {
-        color: var(--muted);
-        font-size: 12px;
-      }
-
-      .command {
-        margin: 0;
-        overflow-x: auto;
-        border-radius: 7px;
-        background: #f1f5f9;
-        padding: 9px;
-        color: #243044;
-        font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-        font-size: 12px;
-        white-space: pre;
       }
 
       .kv {
@@ -523,17 +477,6 @@
           <div class="pane-header">
             <h2 class="pane-title">작업</h2>
             <div class="header-actions">
-              <div class="segmented" aria-label="Task filter">
-                <button class="seg-button active" type="button" data-filter="running">
-                  실행 중
-                </button>
-                <button class="seg-button" type="button" data-filter="recent">
-                  최근
-                </button>
-                <button class="seg-button" type="button" data-filter="archived">
-                  보관
-                </button>
-              </div>
               <button class="refresh" type="button" id="refreshAll">새로고침</button>
             </div>
           </div>
@@ -551,12 +494,6 @@
                 <h1 class="detail-title" id="detailTitle"></h1>
                 <div class="detail-subtitle" id="detailPath"></div>
               </div>
-              <div class="detail-actions">
-                <button class="button" type="button" id="copyCommand"></button>
-                <button class="button primary" type="button" id="refreshPreview">
-                  미리보기 새로고침
-                </button>
-              </div>
             </div>
 
             <section class="section">
@@ -565,15 +502,7 @@
             </section>
 
             <section class="section">
-              <h3 class="section-title">이동 명령</h3>
-              <div class="command-box">
-                <div class="command-label" id="commandHelp"></div>
-                <pre class="command" id="commandText"></pre>
-              </div>
-            </section>
-
-            <section class="section">
-              <h3 class="section-title">최근 화면</h3>
+              <h3 class="section-title">현재 내용</h3>
               <pre class="terminal" id="previewText"></pre>
             </section>
           </div>
@@ -591,10 +520,6 @@
       const detailPath = document.getElementById("detailPath");
       const detailState = document.getElementById("detailState");
       const runtimeInfo = document.getElementById("runtimeInfo");
-      const commandText = document.getElementById("commandText");
-      const commandHelp = document.getElementById("commandHelp");
-      const copyCommand = document.getElementById("copyCommand");
-      const refreshPreview = document.getElementById("refreshPreview");
       const previewText = document.getElementById("previewText");
       const toast = document.getElementById("toast");
 
@@ -688,12 +613,6 @@
         }
       }
 
-      function renderFilters() {
-        document.querySelectorAll("[data-filter]").forEach((button) => {
-          button.classList.toggle("active", button.dataset.filter === filter);
-        });
-      }
-
       function filteredTasks() {
         return tasks.filter((task) => {
           if (task.bucket !== filter) return false;
@@ -728,10 +647,7 @@
       }
 
       function filterLabel(value) {
-        if (value === "running") return "실행 중인";
-        if (value === "recent") return "최근";
-        if (value === "archived") return "보관된";
-        return value;
+        return "실행 중인";
       }
 
       function statusLabel(value) {
@@ -764,29 +680,13 @@
           detailTitle.textContent = "선택된 작업 없음";
           detailPath.textContent = "";
           detailState.textContent = "비어 있음";
-          commandText.textContent = "";
-          commandHelp.textContent = "작업을 선택하면 이동하거나 확인할 명령을 볼 수 있습니다.";
-          copyCommand.textContent = "명령 복사";
-          copyCommand.disabled = true;
-          refreshPreview.disabled = true;
           runtimeInfo.innerHTML = "";
-          previewText.textContent = "표시할 미리보기가 없습니다.";
+          previewText.textContent = "작업을 선택하면 현재 내용을 볼 수 있습니다.";
           return;
         }
-        copyCommand.disabled = false;
         detailTitle.textContent = selected.title;
         detailPath.textContent = selected.path;
         detailState.textContent = detailStateLabel(selected);
-        commandText.textContent = selected.openCommand;
-        commandHelp.textContent = selected.hasPreview
-          ? "SSH 터미널에 붙여넣으면 해당 tmux 세션 화면으로 이동합니다."
-          : "tmux 세션이 아니므로 프로세스 확인 명령만 복사합니다.";
-        copyCommand.textContent = selected.hasPreview
-          ? "이동 명령 복사"
-          : selected.bucket === "archived"
-            ? "경로 명령 복사"
-            : "확인 명령 복사";
-        refreshPreview.disabled = !selected.hasPreview;
         runtimeInfo.innerHTML = [
           row("도구", selected.agent),
           row("상태", statusLabel(selected.status)),
@@ -796,32 +696,7 @@
           row("PID", selected.pid),
           row("명령", selected.command),
         ].join("");
-        previewText.textContent = selected.preview;
-      }
-
-      async function copySelectedCommand() {
-        try {
-          if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(selected.openCommand);
-          } else {
-            const textarea = document.createElement("textarea");
-            textarea.value = selected.openCommand;
-            textarea.setAttribute("readonly", "");
-            textarea.style.position = "fixed";
-            textarea.style.left = "-9999px";
-            textarea.style.top = "0";
-            document.body.appendChild(textarea);
-            textarea.focus();
-            textarea.select();
-            const copied = document.execCommand("copy");
-            document.body.removeChild(textarea);
-            if (!copied) throw new Error("copy command failed");
-          }
-          showToast("명령을 복사했습니다");
-        } catch {
-          commandText.focus();
-          showToast("복사가 막혔습니다. 명령어를 직접 선택하세요.");
-        }
+        previewText.textContent = selected.preview || "현재 내용을 표시할 수 없습니다. tmux 밖 일반 프로세스는 화면 미리보기를 읽을 수 없습니다.";
       }
 
       function showToast(message) {
@@ -830,36 +705,23 @@
         window.setTimeout(() => toast.classList.remove("show"), 1400);
       }
 
-      copyCommand.addEventListener("click", copySelectedCommand);
-      refreshPreview.addEventListener("click", () => showToast("미리보기를 새로고침했습니다"));
       document
         .getElementById("refreshAll")
         .addEventListener("click", () => loadTasks());
-      document.querySelectorAll("[data-filter]").forEach((button) => {
-        button.addEventListener("click", () => {
-          filter = button.dataset.filter;
-          renderFilters();
-          renderGroups();
-          renderList();
-          renderDetail();
-        });
-      });
 
       async function loadTasks() {
         try {
           const response = await fetch("/api/tasks", { cache: "no-store" });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const payload = await response.json();
-          tasks = payload.tasks || [];
+          tasks = (payload.tasks || []).filter((task) => task.bucket === "running");
           selected = tasks.find((task) => selected && task.id === selected.id) || null;
-          renderFilters();
           renderGroups();
           renderList();
           showToast("작업 목록을 새로고침했습니다");
         } catch (error) {
           tasks = [];
           selected = null;
-          renderFilters();
           renderGroups();
           renderList();
           showToast("실제 작업 목록을 불러오지 못했습니다");
