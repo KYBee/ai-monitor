@@ -187,6 +187,14 @@ def terminal_context_from_preview(preview: str, fallback: str = "") -> str:
 
 
 def qa_context_from_preview(preview: str, fallback: str = "") -> str:
+    messages = qa_messages_from_preview(preview)
+    if not messages:
+        return fallback
+    chronological = list(reversed(messages))
+    return "\n\n".join(f"{message['speaker']}\n{message['text']}" for message in chronological)
+
+
+def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
     entries = []
     current_speaker = ""
     current_lines: List[str] = []
@@ -277,8 +285,12 @@ def qa_context_from_preview(preview: str, fallback: str = "") -> str:
 
     flush()
     if not entries:
-        return fallback
-    return "\n\n".join(f"{speaker}\n" + "\n".join(lines) for speaker, lines in entries)
+        return []
+    messages = [
+        {"speaker": speaker, "text": "\n".join(lines), "time": ""}
+        for speaker, lines in entries
+    ]
+    return list(reversed(messages))
 
 
 def context_summary(context: str, fallback: str) -> str:
@@ -357,6 +369,7 @@ def build_tasks(
         tmux_target = f"{pane['session']}:{pane['pane']}"
         preview = preview_by_pane.get(pane["pane_id"], "")
         summary = tmux_summary(pane["path"], pane["pane"])
+        context_messages = qa_messages_from_preview(preview)
         context_text = qa_context_from_preview(preview, summary)
         summary_context = conversation_context_from_preview(preview, summary)
         tasks.append(
@@ -370,6 +383,7 @@ def build_tasks(
                 "summary": summary,
                 "contextSummary": context_summary(summary_context, summary),
                 "contextText": context_text,
+                "contextMessages": context_messages,
                 "path": pane["path"],
                 "source": "session",
                 "tmux": tmux_target,
@@ -404,6 +418,7 @@ def build_tasks(
                 "summary": summary,
                 "contextSummary": summary,
                 "contextText": summary,
+                "contextMessages": [],
                 "path": path or "cwd unavailable",
                 "source": "process",
                 "tmux": "",

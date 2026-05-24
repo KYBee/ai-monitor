@@ -340,21 +340,62 @@
         word-break: break-all;
       }
 
-      .terminal {
-        margin: 0;
+      .chat-log {
         min-height: calc(100vh - 170px);
         max-height: calc(100vh - 170px);
-        border-radius: 8px;
         overflow: auto;
-        border: 1px solid #202938;
-        background: #0f1720;
-        color: #d7e1ee;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8fafc;
         padding: 12px;
+      }
+
+      .message {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 11px 12px;
+        box-shadow: var(--shadow);
+      }
+
+      .message.user {
+        border-color: #b8c7dc;
+        background: #eef4ff;
+      }
+
+      .message.assistant {
+        border-color: #cbd7c7;
+        background: #f6fbf4;
+      }
+
+      .message-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 760;
+      }
+
+      .message-time {
+        color: var(--soft-text);
+        font-weight: 600;
+      }
+
+      .message-body {
+        margin: 0;
+        color: var(--text);
         font-family:
           "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
         font-size: 12px;
         line-height: 1.55;
         white-space: pre-wrap;
+        word-break: break-word;
       }
 
       .detail-actions {
@@ -508,7 +549,7 @@
 
             <section class="section">
               <h3 class="section-title">대화 기록</h3>
-              <pre class="terminal" id="previewText"></pre>
+              <div class="chat-log" id="previewText"></div>
             </section>
 
           </div>
@@ -679,8 +720,38 @@
         detailTitle.textContent = selected.title;
         detailPath.textContent = selected.path;
         detailState.textContent = detailStateLabel(selected);
-        previewText.textContent = selected.contextText || selected.summary || "대화 기록을 표시할 수 없습니다.";
-        previewText.scrollTop = previewText.scrollHeight;
+        renderMessages(selected);
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function renderMessages(task) {
+        const messages = task.contextMessages || [];
+        if (!messages.length) {
+          previewText.textContent = task.contextText || task.summary || "대화 기록을 표시할 수 없습니다.";
+          return;
+        }
+        previewText.innerHTML = messages
+          .map((message) => {
+            const isUser = message.speaker === "사용자";
+            return `
+              <article class="message ${isUser ? "user" : "assistant"}">
+                <div class="message-head">
+                  <span>${escapeHtml(message.speaker || "-")}</span>
+                  <span class="message-time">${escapeHtml(message.time || "")}</span>
+                </div>
+                <pre class="message-body">${escapeHtml(message.text || "")}</pre>
+              </article>
+            `;
+          })
+          .join("");
       }
 
       function showToast(message) {

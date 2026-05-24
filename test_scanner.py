@@ -203,6 +203,30 @@ class ScannerTest(unittest.TestCase):
             "사용자\n처음 질문이에요\n이어지는 질문 줄\n\nCodex\n네, 첫 답변입니다.\n이어지는 답변입니다.\n\n사용자\n다음 질문이에요\n\nCodex\n가능합니다. 이렇게 바꾸겠습니다.",
         )
 
+    def test_task_includes_reverse_order_chat_messages(self):
+        tasks = build_tasks(
+            tmux_rows=["web|0.0|%8|/Users/kybee/workspace/toy|node|1"],
+            ps_rows=[
+                {"pid": "1", "ppid": "0", "etime": "00:10", "command": "-zsh"},
+                {"pid": "2", "ppid": "1", "etime": "00:09", "pcpu": "0.0", "command": "node /opt/homebrew/bin/codex"},
+            ],
+            cwd_by_pid={},
+            preview_by_pane={
+                "%8": """
+                › 첫 질문
+                • 첫 답변
+                › 최근 질문
+                • 최근 답변
+                """
+            },
+        )
+
+        messages = tasks[0]["contextMessages"]
+
+        self.assertEqual([message["speaker"] for message in messages], ["Codex", "사용자", "Codex", "사용자"])
+        self.assertEqual([message["text"] for message in messages], ["최근 답변", "최근 질문", "첫 답변", "첫 질문"])
+        self.assertEqual([message["time"] for message in messages], ["", "", "", ""])
+
     def test_conversation_context_ignores_status_and_approval_choices(self):
         context = conversation_context_from_preview(
             """
