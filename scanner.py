@@ -94,7 +94,7 @@ def make_title(agent: str, path: str, session: str = "") -> str:
 
 
 def tmux_summary(path: str, pane: str) -> str:
-    return f"{project_name(path)} 프로젝트의 tmux pane에서 실행 중 · {pane}"
+    return f"{project_name(path)} 프로젝트 세션에서 감지됨 · {pane}"
 
 
 def process_summary(path: str, pid: str) -> str:
@@ -148,18 +148,18 @@ def build_tasks(
                 "title": make_title(agent, pane["path"], pane["session"]),
                 "summary": tmux_summary(pane["path"], pane["pane"]),
                 "path": pane["path"],
-                "source": "tmux pane",
+                "source": "session",
                 "tmux": tmux_target,
                 "session": pane["session"],
                 "pid": agent_proc["pid"],
                 "etime": agent_proc.get("etime", ""),
                 "command": agent_proc["command"],
-                "hasPreview": True,
+                "hasPreview": False,
                 "openCommand": (
                     f'if [ -n "$TMUX" ]; then tmux switch-client -t {open_session}; '
                     f"else tmux attach -t {open_session}; fi"
                 ),
-                "preview": preview_by_pane.get(tmux_target, ""),
+                "preview": "",
             }
         )
 
@@ -188,7 +188,7 @@ def build_tasks(
                 "command": proc["command"],
                 "hasPreview": False,
                 "openCommand": f"ps -p {proc['pid']} -o pid,ppid,etime,command",
-                "preview": "미리보기를 표시할 수 없습니다. 이 작업은 tmux pane이 아니라 일반 프로세스로 감지되었습니다.",
+                "preview": "",
             }
         )
 
@@ -203,12 +203,7 @@ def get_process_cwd(pid: str) -> str:
     return ""
 
 
-def capture_preview(tmux_target: str) -> str:
-    preview = run_command(["tmux", "capture-pane", "-t", tmux_target, "-p", "-S", "-80"]).strip()
-    return preview[-8000:]
-
-
-def scan_tasks(include_preview: bool = True) -> List[Dict[str, object]]:
+def scan_tasks(include_preview: bool = False) -> List[Dict[str, object]]:
     tmux_output = run_command(
         [
             "tmux",
@@ -222,18 +217,9 @@ def scan_tasks(include_preview: bool = True) -> List[Dict[str, object]]:
     tmux_rows = tmux_output.splitlines()
     ps_rows = parse_ps(ps_output)
 
-    preview_by_pane = {}
-    if include_preview:
-        for row in tmux_rows:
-            pane = parse_tmux_row(row)
-            if not pane:
-                continue
-            target = f"{pane['session']}:{pane['pane']}"
-            preview_by_pane[target] = capture_preview(target)
-
     cwd_by_pid = {}
     for proc in ps_rows:
         if detect_agent(proc["command"]):
             cwd_by_pid[proc["pid"]] = get_process_cwd(proc["pid"])
 
-    return build_tasks(tmux_rows, ps_rows, cwd_by_pid, preview_by_pane)
+    return build_tasks(tmux_rows, ps_rows, cwd_by_pid, {})

@@ -13,7 +13,7 @@ class MonitorHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/tasks":
-            self.send_json({"tasks": scan_tasks(include_preview=True)})
+            self.send_json({"tasks": scan_tasks()})
             return
         return super().do_GET()
 

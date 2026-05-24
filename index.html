@@ -63,15 +63,6 @@
         min-width: 0;
       }
 
-      .segmented {
-        display: inline-flex;
-        align-items: center;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel-soft);
-        padding: 2px;
-      }
-
       .button.primary {
         background: var(--ink);
         border-color: var(--ink);
@@ -87,7 +78,7 @@
       .layout {
         min-height: 0;
         display: grid;
-        grid-template-columns: 242px minmax(380px, 1fr) minmax(420px, 570px);
+        grid-template-columns: 220px minmax(300px, 0.9fr) minmax(520px, 1.35fr);
       }
 
       .pane {
@@ -382,22 +373,6 @@
         word-break: break-all;
       }
 
-      .terminal {
-        margin: 0;
-        min-height: 330px;
-        overflow: auto;
-        border: 1px solid #202938;
-        border-radius: 8px;
-        background: #0f1720;
-        color: #d7e1ee;
-        padding: 12px;
-        font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-        font-size: 12px;
-        line-height: 1.55;
-        white-space: pre-wrap;
-      }
-
       .toast {
         position: fixed;
         right: 16px;
@@ -501,10 +476,6 @@
               <div class="kv" id="runtimeInfo"></div>
             </section>
 
-            <section class="section">
-              <h3 class="section-title">현재 내용</h3>
-              <pre class="terminal" id="previewText"></pre>
-            </section>
           </div>
         </section>
       </main>
@@ -520,7 +491,6 @@
       const detailPath = document.getElementById("detailPath");
       const detailState = document.getElementById("detailState");
       const runtimeInfo = document.getElementById("runtimeInfo");
-      const previewText = document.getElementById("previewText");
       const toast = document.getElementById("toast");
 
       let selected = null;
@@ -556,8 +526,8 @@
             </div>
             <div class="meta-row">
               <span class="chip">${task.agent}</span>
-              <span class="chip">${task.source === "tmux pane" ? `tmux: ${task.tmux.split(":")[0]}` : sourceLabel(task)}</span>
-              <span class="chip">${task.hasPreview ? "미리보기 가능" : `pid ${task.pid || "-"}`}</span>
+              <span class="chip">${task.session ? `세션: ${task.session}` : `pid ${task.pid || "-"}`}</span>
+              <span class="chip">${task.etime ? `실행 시간: ${task.etime}` : "실행 시간: -"}</span>
             </div>
           `;
           card.addEventListener("click", () => selectTask(task.id));
@@ -641,9 +611,9 @@
       }
 
       function sourceLabel(task) {
-        if (task.source === "tmux pane") return "tmux";
+        if (task.source === "session") return "세션";
         if (task.source === "metadata") return "metadata";
-        return "process";
+        return "프로세스";
       }
 
       function filterLabel(value) {
@@ -659,7 +629,7 @@
       }
 
       function detailStateLabel(task) {
-        if (task.hasPreview) return "tmux 미리보기";
+        if (task.source === "session") return "세션";
         if (task.bucket === "recent") return "최근 기록";
         if (task.bucket === "archived") return "보관됨";
         return "프로세스";
@@ -681,7 +651,6 @@
           detailPath.textContent = "";
           detailState.textContent = "비어 있음";
           runtimeInfo.innerHTML = "";
-          previewText.textContent = "작업을 선택하면 현재 내용을 볼 수 있습니다.";
           return;
         }
         detailTitle.textContent = selected.title;
@@ -692,11 +661,11 @@
           row("상태", statusLabel(selected.status)),
           row("감지 방식", sourceLabel(selected)),
           row("프로젝트", selected.path),
-          row("Tmux", selected.tmux),
+          row("세션", selected.session || selected.tmux),
           row("PID", selected.pid),
+          row("실행 시간", selected.etime),
           row("명령", selected.command),
         ].join("");
-        previewText.textContent = selected.preview || "현재 내용을 표시할 수 없습니다. tmux 밖 일반 프로세스는 화면 미리보기를 읽을 수 없습니다.";
       }
 
       function showToast(message) {

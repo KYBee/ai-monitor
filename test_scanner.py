@@ -33,11 +33,12 @@ class ScannerTest(unittest.TestCase):
 
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]["agent"], "codex")
-        self.assertEqual(tasks[0]["source"], "tmux pane")
+        self.assertEqual(tasks[0]["source"], "session")
         self.assertEqual(tasks[0]["tmux"], "tarot:0.0")
         self.assertEqual(tasks[0]["path"], "/Users/kybee/workspace/toy/tarot")
-        self.assertIn("tmux pane에서 실행 중", tasks[0]["summary"])
-        self.assertTrue(tasks[0]["hasPreview"])
+        self.assertIn("세션에서 감지됨", tasks[0]["summary"])
+        self.assertFalse(tasks[0]["hasPreview"])
+        self.assertEqual(tasks[0]["preview"], "")
 
     def test_detects_non_tmux_gemini_process_with_cwd(self):
         tmux_rows = []
@@ -86,7 +87,7 @@ class ScannerTest(unittest.TestCase):
         tasks = build_tasks(tmux_rows, ps_rows, cwd_by_pid={"71890": "/tmp"})
 
         self.assertEqual(len(tasks), 1)
-        self.assertEqual(tasks[0]["source"], "tmux pane")
+        self.assertEqual(tasks[0]["source"], "session")
         self.assertEqual(tasks[0]["pid"], "71890")
 
 
