@@ -228,6 +228,7 @@ def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
     def is_placeholder_prompt(content: str) -> bool:
         placeholders = {
             "Find and fix a bug in @filename",
+            "Run /review on my current changes",
         }
         return content in placeholders
 
@@ -263,6 +264,7 @@ def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
                 "shift +",
                 "queued follow-up inputs",
                 "find and fix a bug in @filename",
+                "run /review on my current changes",
             )
         ):
             return True
@@ -280,6 +282,9 @@ def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
         stripped = line.strip()
         if is_user_prompt(line):
             current_speaker = start_entry("사용자", strip_marker(line, "› "))
+            continue
+        if stripped.startswith("› "):
+            flush()
             continue
         if is_codex_answer(line):
             current_speaker = start_entry("Codex", strip_marker(line, "• "))

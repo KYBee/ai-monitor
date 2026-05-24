@@ -245,6 +245,19 @@ class ScannerTest(unittest.TestCase):
 
         self.assertEqual(context, "Codex\n답변 하나")
 
+    def test_qa_context_ignores_review_placeholder_prompt(self):
+        context = qa_context_from_preview(
+            """
+            • 답변 하나
+
+            › Run /review on my current changes
+
+              gpt-5.5 high · ~/workspace/toy · Main [default]
+            """
+        )
+
+        self.assertEqual(context, "Codex\n답변 하나")
+
     def test_conversation_context_ignores_status_and_approval_choices(self):
         context = conversation_context_from_preview(
             """
