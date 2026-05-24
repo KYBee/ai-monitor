@@ -221,7 +221,15 @@ def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
         if not stripped.startswith("› "):
             return False
         content = stripped[2:].strip()
+        if is_placeholder_prompt(content):
+            return False
         return not re.match(r"^\d+\.\s+", content)
+
+    def is_placeholder_prompt(content: str) -> bool:
+        placeholders = {
+            "Find and fix a bug in @filename",
+        }
+        return content in placeholders
 
     def is_tool_or_status_line(line: str) -> bool:
         stripped = line.strip()
@@ -253,6 +261,8 @@ def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
                 "press enter",
                 "gpt-",
                 "shift +",
+                "queued follow-up inputs",
+                "find and fix a bug in @filename",
             )
         ):
             return True

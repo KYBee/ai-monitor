@@ -227,6 +227,24 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual([message["text"] for message in messages], ["최근 답변", "최근 질문", "첫 답변", "첫 질문"])
         self.assertEqual([message["time"] for message in messages], ["", "", "", ""])
 
+    def test_qa_context_ignores_codex_placeholder_prompt(self):
+        context = qa_context_from_preview(
+            """
+            • 답변 하나
+
+            Queued follow-up inputs
+            ↳ 실행 정보
+            shift + ← edit last queued message
+            Find and fix a bug in @filename
+
+            › Find and fix a bug in @filename
+
+              gpt-5.5 high · ~/workspace/toy
+            """
+        )
+
+        self.assertEqual(context, "Codex\n답변 하나")
+
     def test_conversation_context_ignores_status_and_approval_choices(self):
         context = conversation_context_from_preview(
             """
