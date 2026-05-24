@@ -723,15 +723,14 @@
         if (!path || path === "cwd unavailable") {
           return { key: "unknown", name: "unknown", path: "cwd unavailable" };
         }
-        const workspacePrefix = "/Users/kybee/workspace/";
-        if (path.startsWith(workspacePrefix)) {
-          const relative = path.slice(workspacePrefix.length);
-          const parts = relative.split("/").filter(Boolean);
-          const name = parts.slice(0, Math.min(parts.length, 2)).join("/") || "workspace";
+        const homeMatch = path.match(/^(\/Users\/[^/]+|\/home\/[^/]+)(\/.*)?$/);
+        if (homeMatch) {
+          const relative = (homeMatch[2] || "").replace(/^\/+/, "");
+          const name = relative || "~";
           return {
-            key: `workspace:${name}`,
+            key: `home:${name}`,
             name,
-            path: `${workspacePrefix}${name}`,
+            path: relative ? `~/${relative}` : "~",
           };
         }
         const parts = path.split("/").filter(Boolean);
