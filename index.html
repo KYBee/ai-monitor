@@ -726,9 +726,10 @@
         const homeMatch = path.match(/^(\/Users\/[^/]+|\/home\/[^/]+)(\/.*)?$/);
         if (homeMatch) {
           const relative = (homeMatch[2] || "").replace(/^\/+/, "");
-          const name = relative || "~";
+          const parts = relative.split("/").filter(Boolean);
+          const name = parts[parts.length - 1] || "~";
           return {
-            key: `home:${name}`,
+            key: `home:${relative || "~"}`,
             name,
             path: relative ? `~/${relative}` : "~",
           };

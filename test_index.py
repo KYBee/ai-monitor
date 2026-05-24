@@ -48,10 +48,10 @@ class IndexBehaviorTest(unittest.TestCase):
         groups = json.loads(output)
 
         self.assertEqual(groups[0]["key"], "home:projects/alpha")
-        self.assertEqual(groups[0]["name"], "projects/alpha")
+        self.assertEqual(groups[0]["name"], "alpha")
         self.assertEqual(groups[0]["path"], "~/projects/alpha")
         self.assertEqual(groups[1]["key"], "home:projects/beta")
-        self.assertEqual(groups[1]["name"], "projects/beta")
+        self.assertEqual(groups[1]["name"], "beta")
         self.assertEqual(groups[1]["path"], "~/projects/beta")
         self.assertEqual(groups[2]["key"], "home:projects")
         self.assertEqual(groups[2]["name"], "projects")
