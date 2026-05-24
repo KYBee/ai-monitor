@@ -265,6 +265,11 @@
         color: #a66700;
       }
 
+      .status.waiting {
+        background: #eef4ff;
+        color: #3563a2;
+      }
+
       .status.archived {
         background: #f1f5f9;
         color: #596579;
@@ -521,7 +526,7 @@
               </div>
             </div>
             <div class="task-side">
-              <div class="status ${task.bucket === "recent" ? "recent" : task.bucket === "archived" ? "archived" : ""}"><span class="dot"></span>${task.status}</div>
+              <div class="status ${task.status === "waiting" ? "waiting" : task.bucket === "recent" ? "recent" : task.bucket === "archived" ? "archived" : ""}"><span class="dot"></span>${statusLabel(task.status)}</div>
               <span class="chip">${sourceLabel(task)}</span>
             </div>
             <div class="meta-row">
@@ -621,7 +626,8 @@
       }
 
       function statusLabel(value) {
-        if (value === "running") return "실행 중";
+        if (value === "running") return "응답 중";
+        if (value === "waiting") return "대기";
         if (value === "gone") return "사라짐";
         if (value === "stopped") return "종료됨";
         if (value === "archived") return "보관됨";
@@ -629,6 +635,8 @@
       }
 
       function detailStateLabel(task) {
+        if (task.status === "waiting") return "대기";
+        if (task.status === "running") return "응답 중";
         if (task.source === "session") return "세션";
         if (task.bucket === "recent") return "최근 기록";
         if (task.bucket === "archived") return "보관됨";
@@ -658,7 +666,7 @@
         detailState.textContent = detailStateLabel(selected);
         runtimeInfo.innerHTML = [
           row("도구", selected.agent),
-          row("상태", statusLabel(selected.status)),
+          row("상태", `${statusLabel(selected.status)} (활동량 기반 추정)`),
           row("감지 방식", sourceLabel(selected)),
           row("프로젝트", selected.path),
           row("세션", selected.session || selected.tmux),

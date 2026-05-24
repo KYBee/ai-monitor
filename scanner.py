@@ -21,17 +21,29 @@ def run_command(args: List[str]) -> str:
 def parse_ps(output: str) -> List[Dict[str, str]]:
     rows = []
     for line in output.splitlines():
-        match = re.match(r"\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+)$", line)
-        if not match:
+        match_with_cpu = re.match(r"\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.+)$", line)
+        if match_with_cpu:
+            rows.append(
+                {
+                    "pid": match_with_cpu.group(1),
+                    "ppid": match_with_cpu.group(2),
+                    "etime": match_with_cpu.group(3),
+                    "pcpu": match_with_cpu.group(4),
+                    "command": match_with_cpu.group(5),
+                }
+            )
             continue
-        rows.append(
-            {
-                "pid": match.group(1),
-                "ppid": match.group(2),
-                "etime": match.group(3),
-                "command": match.group(4),
-            }
-        )
+        match = re.match(r"\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+)$", line)
+        if match:
+            rows.append(
+                {
+                    "pid": match.group(1),
+                    "ppid": match.group(2),
+                    "etime": match.group(3),
+                    "pcpu": "",
+                    "command": match.group(4),
+                }
+            )
     return rows
 
 
@@ -101,6 +113,23 @@ def process_summary(path: str, pid: str) -> str:
     return f"{project_name(path)} 프로젝트에서 일반 프로세스로 실행 중 · PID {pid}"
 
 
+def activity_status(proc: Dict[str, str]) -> str:
+    try:
+        pcpu = float(proc.get("pcpu", ""))
+    except ValueError:
+        return "running"
+    if pcpu >= 1.0:
+        return "running"
+    return "waiting"
+
+
+def activity_status_for(procs: Iterable[Dict[str, str]]) -> str:
+    for proc in procs:
+        if detect_agent(proc["command"]) and activity_status(proc) == "running":
+            return "running"
+    return "waiting"
+
+
 def build_tasks(
     tmux_rows: Iterable[str],
     ps_rows: Iterable[Dict[str, str]],
@@ -121,7 +150,15 @@ def build_tasks(
         pane = parse_tmux_row(row)
         if not pane:
             continue
-        candidate_procs = [{"pid": pane["pid"], "ppid": "", "etime": "", "command": pane["command"]}]
+        candidate_procs = [
+            {
+                "pid": pane["pid"],
+                "ppid": "",
+                "etime": "",
+                "pcpu": "",
+                "command": pane["command"],
+            }
+        ]
         candidate_procs.extend(descendants(pane["pid"], children_by_ppid))
         agent_proc = None
         agent = None
@@ -142,7 +179,7 @@ def build_tasks(
             {
                 "id": task_id("tmux", tmux_target, agent_proc["pid"]),
                 "bucket": "running",
-                "status": "running",
+                "status": activity_status_for(candidate_procs),
                 "agent": agent,
                 "badge": agent[0].upper(),
                 "title": make_title(agent, pane["path"], pane["session"]),
@@ -155,10 +192,7 @@ def build_tasks(
                 "etime": agent_proc.get("etime", ""),
                 "command": agent_proc["command"],
                 "hasPreview": False,
-                "openCommand": (
-                    f'if [ -n "$TMUX" ]; then tmux switch-client -t {open_session}; '
-                    f"else tmux attach -t {open_session}; fi"
-                ),
+                "openCommand": f"ps -p {agent_proc['pid']} -o pid,ppid,etime,pcpu,command",
                 "preview": "",
             }
         )
@@ -174,7 +208,7 @@ def build_tasks(
             {
                 "id": task_id("process", proc["pid"], proc["pid"]),
                 "bucket": "running",
-                "status": "running",
+                "status": activity_status(proc),
                 "agent": agent,
                 "badge": agent[0].upper(),
                 "title": make_title(agent, path),
@@ -187,7 +221,7 @@ def build_tasks(
                 "etime": proc.get("etime", ""),
                 "command": proc["command"],
                 "hasPreview": False,
-                "openCommand": f"ps -p {proc['pid']} -o pid,ppid,etime,command",
+                "openCommand": f"ps -p {proc['pid']} -o pid,ppid,etime,pcpu,command",
                 "preview": "",
             }
         )
@@ -213,7 +247,7 @@ def scan_tasks(include_preview: bool = False) -> List[Dict[str, object]]:
             "#{session_name}|#{window_index}.#{pane_index}|#{pane_id}|#{pane_current_path}|#{pane_current_command}|#{pane_pid}",
         ]
     )
-    ps_output = run_command(["ps", "ax", "-o", "pid=,ppid=,etime=,command="])
+    ps_output = run_command(["ps", "ax", "-o", "pid=,ppid=,etime=,pcpu=,command="])
     tmux_rows = tmux_output.splitlines()
     ps_rows = parse_ps(ps_output)
 

@@ -1,6 +1,6 @@
 import unittest
 
-from scanner import build_tasks
+from scanner import build_tasks, parse_ps
 
 
 class ScannerTest(unittest.TestCase):
@@ -19,12 +19,14 @@ class ScannerTest(unittest.TestCase):
                 "pid": "19683",
                 "ppid": "19531",
                 "etime": "01-09:28:50",
+                "pcpu": "0.0",
                 "command": "node /opt/homebrew/bin/codex",
             },
             {
                 "pid": "19684",
                 "ppid": "19683",
                 "etime": "01-09:28:50",
+                "pcpu": "8.4",
                 "command": "/opt/homebrew/lib/node_modules/@openai/codex/vendor/codex",
             },
         ]
@@ -35,6 +37,7 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(tasks[0]["agent"], "codex")
         self.assertEqual(tasks[0]["source"], "session")
         self.assertEqual(tasks[0]["tmux"], "tarot:0.0")
+        self.assertEqual(tasks[0]["status"], "running")
         self.assertEqual(tasks[0]["path"], "/Users/kybee/workspace/toy/tarot")
         self.assertIn("세션에서 감지됨", tasks[0]["summary"])
         self.assertFalse(tasks[0]["hasPreview"])
@@ -47,6 +50,7 @@ class ScannerTest(unittest.TestCase):
                 "pid": "200",
                 "ppid": "1",
                 "etime": "00:03:00",
+                "pcpu": "0.0",
                 "command": "node /opt/homebrew/bin/gemini",
             },
         ]
@@ -60,6 +64,7 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]["agent"], "gemini")
         self.assertEqual(tasks[0]["source"], "process")
+        self.assertEqual(tasks[0]["status"], "waiting")
         self.assertEqual(tasks[0]["pid"], "200")
         self.assertEqual(tasks[0]["path"], "/Users/kybee/workspace/toy/GaodeLink")
         self.assertIn("일반 프로세스로 실행 중", tasks[0]["summary"])
@@ -80,6 +85,7 @@ class ScannerTest(unittest.TestCase):
                 "pid": "71890",
                 "ppid": "71770",
                 "etime": "01:24:19",
+                "pcpu": "0.4",
                 "command": "node /opt/homebrew/bin/codex",
             },
         ]
@@ -89,6 +95,12 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]["source"], "session")
         self.assertEqual(tasks[0]["pid"], "71890")
+
+    def test_parse_ps_reads_cpu_for_activity_status(self):
+        rows = parse_ps(" 123 1 00:10 2.7 /usr/local/bin/claude\n")
+
+        self.assertEqual(rows[0]["pid"], "123")
+        self.assertEqual(rows[0]["pcpu"], "2.7")
 
 
 if __name__ == "__main__":
