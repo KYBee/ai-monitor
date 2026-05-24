@@ -63,6 +63,19 @@
         min-width: 0;
       }
 
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .toggle input {
+        accent-color: var(--ink);
+      }
+
       .button.primary {
         background: var(--ink);
         border-color: var(--ink);
@@ -265,11 +278,7 @@
         color: #a66700;
       }
 
-      .status.waiting {
-        background: #eef4ff;
-        color: #3563a2;
-      }
-
+      .status.stopped,
       .status.archived {
         background: #f1f5f9;
         color: #596579;
@@ -329,6 +338,23 @@
         color: var(--muted);
         font-size: 13px;
         word-break: break-all;
+      }
+
+      .terminal {
+        margin: 0;
+        min-height: calc(100vh - 170px);
+        max-height: calc(100vh - 170px);
+        border-radius: 8px;
+        overflow: auto;
+        border: 1px solid #202938;
+        background: #0f1720;
+        color: #d7e1ee;
+        padding: 12px;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre-wrap;
       }
 
       .detail-actions {
@@ -457,6 +483,10 @@
           <div class="pane-header">
             <h2 class="pane-title">작업</h2>
             <div class="header-actions">
+              <label class="toggle">
+                <input type="checkbox" id="showStopped" />
+                종료 포함
+              </label>
               <button class="refresh" type="button" id="refreshAll">새로고침</button>
             </div>
           </div>
@@ -477,8 +507,8 @@
             </div>
 
             <section class="section">
-              <h3 class="section-title">실행 정보</h3>
-              <div class="kv" id="runtimeInfo"></div>
+              <h3 class="section-title">현재 내용</h3>
+              <pre class="terminal" id="previewText"></pre>
             </section>
 
           </div>
@@ -495,11 +525,11 @@
       const detailTitle = document.getElementById("detailTitle");
       const detailPath = document.getElementById("detailPath");
       const detailState = document.getElementById("detailState");
-      const runtimeInfo = document.getElementById("runtimeInfo");
+      const previewText = document.getElementById("previewText");
       const toast = document.getElementById("toast");
+      const showStoppedToggle = document.getElementById("showStopped");
 
       let selected = null;
-      let filter = "running";
       let groupFilter = "all";
 
       function renderList() {
@@ -510,7 +540,7 @@
         }
         renderDetail();
         if (!visibleTasks.length) {
-          sessionList.innerHTML = `<div class="empty-state">${filterLabel(filter)} 작업이 이 폴더에 없습니다.</div>`;
+          sessionList.innerHTML = `<div class="empty-state">${filterLabel()} 작업이 이 폴더에 없습니다.</div>`;
           return;
         }
         for (const task of visibleTasks) {
@@ -522,16 +552,14 @@
               <div class="agent ${task.agent}">${task.badge}</div>
               <div class="task-copy">
                 <div class="name">${task.title}</div>
-                <div class="summary">${task.summary}</div>
+                <div class="summary">${task.contextSummary || task.summary}</div>
               </div>
             </div>
             <div class="task-side">
-              <div class="status ${task.status === "waiting" ? "waiting" : task.bucket === "recent" ? "recent" : task.bucket === "archived" ? "archived" : ""}"><span class="dot"></span>${statusLabel(task.status)}</div>
-              <span class="chip">${sourceLabel(task)}</span>
+              <div class="status ${task.status === "stopped" ? "stopped" : task.bucket === "recent" ? "recent" : task.bucket === "archived" ? "archived" : ""}"><span class="dot"></span>${statusLabel(task.status)}</div>
             </div>
             <div class="meta-row">
               <span class="chip">${task.agent}</span>
-              <span class="chip">${task.session ? `세션: ${task.session}` : `pid ${task.pid || "-"}`}</span>
               <span class="chip">${task.etime ? `실행 시간: ${task.etime}` : "실행 시간: -"}</span>
             </div>
           `;
@@ -548,7 +576,7 @@
 
       function renderGroups() {
         const counts = new Map();
-        for (const task of tasks.filter((task) => task.bucket === filter)) {
+        for (const task of tasks) {
           const group = folderGroup(task.path);
           counts.set(group.key, {
             key: group.key,
@@ -590,7 +618,6 @@
 
       function filteredTasks() {
         return tasks.filter((task) => {
-          if (task.bucket !== filter) return false;
           if (groupFilter === "all") return true;
           return folderGroup(task.path).key === groupFilter;
         });
@@ -615,19 +642,12 @@
         return { key: path, name, path };
       }
 
-      function sourceLabel(task) {
-        if (task.source === "session") return "세션";
-        if (task.source === "metadata") return "metadata";
-        return "프로세스";
-      }
-
-      function filterLabel(value) {
-        return "실행 중인";
+      function filterLabel() {
+        return showStoppedToggle.checked ? "감지된" : "실행 중인";
       }
 
       function statusLabel(value) {
-        if (value === "running") return "응답 중";
-        if (value === "waiting") return "대기";
+        if (value === "running") return "실행 중";
         if (value === "gone") return "사라짐";
         if (value === "stopped") return "종료됨";
         if (value === "archived") return "보관됨";
@@ -635,12 +655,11 @@
       }
 
       function detailStateLabel(task) {
-        if (task.status === "waiting") return "대기";
-        if (task.status === "running") return "응답 중";
-        if (task.source === "session") return "세션";
+        if (task.status === "running") return "실행 중";
+        if (task.status === "stopped") return "종료됨";
         if (task.bucket === "recent") return "최근 기록";
         if (task.bucket === "archived") return "보관됨";
-        return "프로세스";
+        return statusLabel(task.status);
       }
 
       function selectTask(id) {
@@ -649,31 +668,18 @@
         renderDetail();
       }
 
-      function row(key, value) {
-        return `<div class="kv-row"><div class="key">${key}</div><div class="value">${value || "-"}</div></div>`;
-      }
-
       function renderDetail() {
         if (!selected) {
           detailTitle.textContent = "선택된 작업 없음";
           detailPath.textContent = "";
           detailState.textContent = "비어 있음";
-          runtimeInfo.innerHTML = "";
+          previewText.textContent = "작업을 선택하면 현재 내용을 볼 수 있습니다.";
           return;
         }
         detailTitle.textContent = selected.title;
         detailPath.textContent = selected.path;
         detailState.textContent = detailStateLabel(selected);
-        runtimeInfo.innerHTML = [
-          row("도구", selected.agent),
-          row("상태", `${statusLabel(selected.status)} (활동량 기반 추정)`),
-          row("감지 방식", sourceLabel(selected)),
-          row("프로젝트", selected.path),
-          row("세션", selected.session || selected.tmux),
-          row("PID", selected.pid),
-          row("실행 시간", selected.etime),
-          row("명령", selected.command),
-        ].join("");
+        previewText.textContent = selected.contextText || selected.summary || "현재 내용을 표시할 수 없습니다.";
       }
 
       function showToast(message) {
@@ -686,12 +692,15 @@
         .getElementById("refreshAll")
         .addEventListener("click", () => loadTasks());
 
+      showStoppedToggle.addEventListener("change", () => loadTasks());
+
       async function loadTasks() {
         try {
-          const response = await fetch("/api/tasks", { cache: "no-store" });
+          const stoppedQuery = showStoppedToggle.checked ? "?stopped=1" : "";
+          const response = await fetch(`/api/tasks${stoppedQuery}`, { cache: "no-store" });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const payload = await response.json();
-          tasks = (payload.tasks || []).filter((task) => task.bucket === "running");
+          tasks = payload.tasks || [];
           selected = tasks.find((task) => selected && task.id === selected.id) || null;
           renderGroups();
           renderList();

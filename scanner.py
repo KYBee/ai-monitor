@@ -73,6 +73,20 @@ def descendants(root_pid: str, children_by_ppid: Dict[str, List[Dict[str, str]]]
         stack.extend(children_by_ppid.get(proc["pid"], []))
 
 
+def has_agent_ancestor(proc: Dict[str, str], ps_by_pid: Dict[str, Dict[str, str]]) -> bool:
+    parent_pid = proc.get("ppid", "")
+    seen = set()
+    while parent_pid and parent_pid not in seen:
+        seen.add(parent_pid)
+        parent = ps_by_pid.get(parent_pid)
+        if not parent:
+            return False
+        if detect_agent(parent["command"]):
+            return True
+        parent_pid = parent.get("ppid", "")
+    return False
+
+
 def parse_tmux_row(row: str) -> Optional[Dict[str, str]]:
     parts = row.split("|", 5)
     if len(parts) != 6:
@@ -113,21 +127,93 @@ def process_summary(path: str, pid: str) -> str:
     return f"{project_name(path)} 프로젝트에서 일반 프로세스로 실행 중 · PID {pid}"
 
 
-def activity_status(proc: Dict[str, str]) -> str:
-    try:
-        pcpu = float(proc.get("pcpu", ""))
-    except ValueError:
-        return "running"
-    if pcpu >= 1.0:
-        return "running"
-    return "waiting"
+def clean_preview_line(line: str) -> str:
+    line = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line)
+    line = line.strip()
+    line = re.sub(r"^[>›•\-\s]+", "", line).strip()
+    return line
 
 
-def activity_status_for(procs: Iterable[Dict[str, str]]) -> str:
-    for proc in procs:
-        if detect_agent(proc["command"]) and activity_status(proc) == "running":
-            return "running"
-    return "waiting"
+def clean_terminal_text(text: str) -> str:
+    text = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+    return text.strip()
+
+
+def is_meaningful_preview_line(line: str) -> bool:
+    if len(line) < 3:
+        return False
+    lowered = line.lower()
+    ignored = (
+        "tokens used",
+        "context left",
+        "ctrl+c",
+        "ctrl + t",
+        "esc",
+        "thinking",
+        "running command",
+        "would you like to run",
+        "press enter to confirm",
+        "yes, proceed",
+        "yes, and don't ask again",
+        "no, and tell codex",
+        "approved codex",
+        "exit code",
+        "wall time",
+        "worked for",
+        "running ",
+        "gpt-",
+    )
+    if re.match(r"^\d+\.\s+", line):
+        return False
+    if re.match(r"^[✔•]\s*(ran|running|edited|searched|searching|explored)", line, re.IGNORECASE):
+        return False
+    return not any(item in lowered for item in ignored)
+
+
+def conversation_context_from_preview(preview: str, fallback: str = "") -> str:
+    lines = [clean_preview_line(line) for line in preview.splitlines()]
+    meaningful = [line for line in lines if is_meaningful_preview_line(line)]
+    if not meaningful:
+        return fallback
+    context = "\n".join(meaningful[-24:])
+    if len(context) > 2400:
+        return context[-2400:].lstrip()
+    return context
+
+
+def terminal_context_from_preview(preview: str, fallback: str = "") -> str:
+    context = clean_terminal_text(preview)
+    return context or fallback
+
+
+def context_summary(context: str, fallback: str) -> str:
+    def useful_for_summary(line: str) -> bool:
+        stripped = line.strip()
+        if not stripped:
+            return False
+        lowered = stripped.lower()
+        prefixes = ("ran ", "explored", "searching", "searched", "read ", "edited ", "thread:", "reason:", "$ ")
+        if stripped.startswith(("└", "│", "…", "─")):
+            return False
+        if lowered.startswith(prefixes):
+            return False
+        if "http://" in lowered or "https://" in lowered:
+            return False
+        if "http/1.1" in lowered:
+            return False
+        return True
+
+    for line in reversed(context.splitlines()):
+        if useful_for_summary(line):
+            summary = line.strip()
+            return f"{summary[:157].rstrip()}..." if len(summary) > 160 else summary
+    return fallback
+
+
+def capture_preview(pane_id: str) -> str:
+    if not pane_id:
+        return ""
+    return run_command(["tmux", "capture-pane", "-p", "-t", pane_id, "-S", "-"])
 
 
 def build_tasks(
@@ -174,16 +260,21 @@ def build_tasks(
             if detect_agent(proc["command"]):
                 represented_pids.add(proc["pid"])
         tmux_target = f"{pane['session']}:{pane['pane']}"
-        open_session = pane["session"]
+        preview = preview_by_pane.get(pane["pane_id"], "")
+        summary = tmux_summary(pane["path"], pane["pane"])
+        context_text = terminal_context_from_preview(preview, summary)
+        summary_context = conversation_context_from_preview(preview, summary)
         tasks.append(
             {
                 "id": task_id("tmux", tmux_target, agent_proc["pid"]),
                 "bucket": "running",
-                "status": activity_status_for(candidate_procs),
+                "status": "running",
                 "agent": agent,
                 "badge": agent[0].upper(),
                 "title": make_title(agent, pane["path"], pane["session"]),
-                "summary": tmux_summary(pane["path"], pane["pane"]),
+                "summary": summary,
+                "contextSummary": context_summary(summary_context, summary),
+                "contextText": context_text,
                 "path": pane["path"],
                 "source": "session",
                 "tmux": tmux_target,
@@ -191,7 +282,7 @@ def build_tasks(
                 "pid": agent_proc["pid"],
                 "etime": agent_proc.get("etime", ""),
                 "command": agent_proc["command"],
-                "hasPreview": False,
+                "hasPreview": bool(preview.strip()),
                 "openCommand": f"ps -p {agent_proc['pid']} -o pid,ppid,etime,pcpu,command",
                 "preview": "",
             }
@@ -200,19 +291,24 @@ def build_tasks(
     for proc in ps_rows:
         if proc["pid"] in represented_pids:
             continue
+        if has_agent_ancestor(proc, ps_by_pid):
+            continue
         agent = detect_agent(proc["command"])
         if not agent:
             continue
         path = cwd_by_pid.get(proc["pid"], "")
+        summary = process_summary(path, proc["pid"])
         tasks.append(
             {
                 "id": task_id("process", proc["pid"], proc["pid"]),
                 "bucket": "running",
-                "status": activity_status(proc),
+                "status": "running",
                 "agent": agent,
                 "badge": agent[0].upper(),
                 "title": make_title(agent, path),
-                "summary": process_summary(path, proc["pid"]),
+                "summary": summary,
+                "contextSummary": summary,
+                "contextText": summary,
                 "path": path or "cwd unavailable",
                 "source": "process",
                 "tmux": "",
@@ -256,4 +352,11 @@ def scan_tasks(include_preview: bool = False) -> List[Dict[str, object]]:
         if detect_agent(proc["command"]):
             cwd_by_pid[proc["pid"]] = get_process_cwd(proc["pid"])
 
-    return build_tasks(tmux_rows, ps_rows, cwd_by_pid, {})
+    preview_by_pane = {}
+    if include_preview:
+        for row in tmux_rows:
+            pane = parse_tmux_row(row)
+            if pane:
+                preview_by_pane[pane["pane_id"]] = capture_preview(pane["pane_id"])
+
+    return build_tasks(tmux_rows, ps_rows, cwd_by_pid, preview_by_pane)
