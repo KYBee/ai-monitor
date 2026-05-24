@@ -186,6 +186,101 @@ def terminal_context_from_preview(preview: str, fallback: str = "") -> str:
     return context or fallback
 
 
+def qa_context_from_preview(preview: str, fallback: str = "") -> str:
+    entries = []
+    current_speaker = ""
+    current_lines: List[str] = []
+
+    def flush():
+        nonlocal current_speaker, current_lines
+        lines = [line for line in current_lines if line.strip()]
+        if current_speaker and lines:
+            entries.append((current_speaker, lines))
+        current_speaker = ""
+        current_lines = []
+
+    def start_entry(speaker: str, text: str):
+        flush()
+        current_speaker = speaker
+        current_lines.append(text)
+        return current_speaker
+
+    def strip_marker(line: str, marker: str) -> str:
+        return line.strip()[len(marker) :].strip()
+
+    def is_user_prompt(line: str) -> bool:
+        stripped = line.strip()
+        if not stripped.startswith("› "):
+            return False
+        content = stripped[2:].strip()
+        return not re.match(r"^\d+\.\s+", content)
+
+    def is_tool_or_status_line(line: str) -> bool:
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if not stripped:
+            return False
+        if stripped.startswith(("└", "│", "…", "─", "✔", "↳")):
+            return True
+        if lowered.startswith(
+            (
+                "ran ",
+                "edited ",
+                "explored",
+                "searching",
+                "searched",
+                "read ",
+                "updated plan",
+                "spawned ",
+                "running ",
+                "working ",
+                "waited ",
+                "closed ",
+                "sent input",
+                "queued ",
+                "interacted ",
+                "context compacted",
+                "would you like",
+                "reason:",
+                "press enter",
+                "gpt-",
+                "shift +",
+            )
+        ):
+            return True
+        return False
+
+    def is_codex_answer(line: str) -> bool:
+        stripped = line.strip()
+        if not stripped.startswith("• "):
+            return False
+        content = stripped[2:].strip()
+        return bool(content) and not is_tool_or_status_line(content)
+
+    for raw_line in clean_terminal_text(preview).splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if is_user_prompt(line):
+            current_speaker = start_entry("사용자", strip_marker(line, "› "))
+            continue
+        if is_codex_answer(line):
+            current_speaker = start_entry("Codex", strip_marker(line, "• "))
+            continue
+        if stripped.startswith("• ") or is_tool_or_status_line(stripped):
+            flush()
+            continue
+        if not stripped:
+            continue
+        if current_speaker:
+            if not is_tool_or_status_line(stripped):
+                current_lines.append(stripped)
+
+    flush()
+    if not entries:
+        return fallback
+    return "\n\n".join(f"{speaker}\n" + "\n".join(lines) for speaker, lines in entries)
+
+
 def context_summary(context: str, fallback: str) -> str:
     def useful_for_summary(line: str) -> bool:
         stripped = line.strip()
@@ -262,7 +357,7 @@ def build_tasks(
         tmux_target = f"{pane['session']}:{pane['pane']}"
         preview = preview_by_pane.get(pane["pane_id"], "")
         summary = tmux_summary(pane["path"], pane["pane"])
-        context_text = terminal_context_from_preview(preview, summary)
+        context_text = qa_context_from_preview(preview, summary)
         summary_context = conversation_context_from_preview(preview, summary)
         tasks.append(
             {

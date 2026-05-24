@@ -507,7 +507,7 @@
             </div>
 
             <section class="section">
-              <h3 class="section-title">현재 내용</h3>
+              <h3 class="section-title">대화 기록</h3>
               <pre class="terminal" id="previewText"></pre>
             </section>
 
@@ -673,13 +673,14 @@
           detailTitle.textContent = "선택된 작업 없음";
           detailPath.textContent = "";
           detailState.textContent = "비어 있음";
-          previewText.textContent = "작업을 선택하면 현재 내용을 볼 수 있습니다.";
+          previewText.textContent = "작업을 선택하면 대화 기록을 볼 수 있습니다.";
           return;
         }
         detailTitle.textContent = selected.title;
         detailPath.textContent = selected.path;
         detailState.textContent = detailStateLabel(selected);
-        previewText.textContent = selected.contextText || selected.summary || "현재 내용을 표시할 수 없습니다.";
+        previewText.textContent = selected.contextText || selected.summary || "대화 기록을 표시할 수 없습니다.";
+        previewText.scrollTop = previewText.scrollHeight;
       }
 
       function showToast(message) {

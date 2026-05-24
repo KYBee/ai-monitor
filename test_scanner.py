@@ -1,6 +1,13 @@
 import unittest
 
-from scanner import build_tasks, context_summary, conversation_context_from_preview, parse_ps, terminal_context_from_preview
+from scanner import (
+    build_tasks,
+    context_summary,
+    conversation_context_from_preview,
+    parse_ps,
+    qa_context_from_preview,
+    terminal_context_from_preview,
+)
 
 
 class ScannerTest(unittest.TestCase):
@@ -47,7 +54,7 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(tasks[0]["status"], "running")
         self.assertEqual(
             tasks[0]["contextText"],
-            "› 지금 실행중인 AI 작업 대시보드를 만들고 있어\n오른쪽에 작업 힌트를 크게 보여줘",
+            "사용자\n지금 실행중인 AI 작업 대시보드를 만들고 있어\n오른쪽에 작업 힌트를 크게 보여줘",
         )
         self.assertEqual(tasks[0]["contextSummary"], "오른쪽에 작업 힌트를 크게 보여줘")
         self.assertEqual(tasks[0]["path"], "/Users/kybee/workspace/toy/tarot")
@@ -166,6 +173,35 @@ class ScannerTest(unittest.TestCase):
         self.assertIn("Would you like to run the following command?", context)
         self.assertIn("› 1. Yes, proceed (y)", context)
         self.assertIn("실제 대화 기록", context)
+
+    def test_qa_context_keeps_only_user_questions_and_codex_answers(self):
+        context = qa_context_from_preview(
+            """
+            › 처음 질문이에요
+              이어지는 질문 줄
+
+            • 네, 첫 답변입니다.
+              이어지는 답변입니다.
+
+            • Ran git status --short
+              └ M index.html
+
+            • Running tmux capture-pane -p -t %6 -S -80
+
+            • Edited ai-monitor-mockup/index.html (+1 -1)
+
+            ──────────────────────────────────────────────
+
+            › 다음 질문이에요
+
+            • 가능합니다. 이렇게 바꾸겠습니다.
+            """
+        )
+
+        self.assertEqual(
+            context,
+            "사용자\n처음 질문이에요\n이어지는 질문 줄\n\nCodex\n네, 첫 답변입니다.\n이어지는 답변입니다.\n\n사용자\n다음 질문이에요\n\nCodex\n가능합니다. 이렇게 바꾸겠습니다.",
+        )
 
     def test_conversation_context_ignores_status_and_approval_choices(self):
         context = conversation_context_from_preview(
