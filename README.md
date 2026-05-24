@@ -1,5 +1,7 @@
 # AI Monitor
 
+<img width="1552" height="898" alt="스크린샷 2026-05-25 오전 12 20 16" src="https://github.com/user-attachments/assets/127a57e3-0146-436b-96d4-4e47dbc8e5f9" />
+
 실행 중인 AI 에이전트 작업을 브라우저에서 확인하는 로컬 대시보드입니다.
 
 Codex, Gemini, Claude 같은 CLI 에이전트 작업을 폴더별로 모아 보고, 선택한 작업의 대화 기록을 빠르게 확인할 수 있습니다.
@@ -62,10 +64,4 @@ http://127.0.0.1:8787
 ```bash
 python3 -m unittest
 python3 -m py_compile scanner.py server.py
-```
-
-HTML 스크립트 문법만 확인하려면:
-
-```bash
-node -e "const fs=require('fs'); const html=fs.readFileSync('index.html','utf8'); const m=html.match(/<script>([\\s\\S]*)<\\/script>/); new Function(m[1]);"
 ```
