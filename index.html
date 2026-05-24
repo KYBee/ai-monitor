@@ -191,10 +191,26 @@
         gap: 8px 12px;
         padding: 10px;
         border: 1px solid var(--line);
+        border-left-width: 4px;
         border-radius: 7px;
         background: #fff;
         cursor: pointer;
         text-align: left;
+        transition:
+          border-color 120ms ease,
+          background 120ms ease,
+          box-shadow 120ms ease;
+      }
+
+      .session-card.running {
+        border-left-color: var(--green);
+        background: #ffffff;
+      }
+
+      .session-card.stopped {
+        border-left-color: #a6b0bf;
+        background: #f7f9fc;
+        color: #5f6b7a;
       }
 
       .session-card:hover {
@@ -204,6 +220,16 @@
       .session-card.active {
         border-color: #9aa8ba;
         box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.13);
+      }
+
+      .session-card.running.active {
+        border-color: #8fb8a5;
+        box-shadow: 0 0 0 3px rgba(22, 129, 83, 0.14);
+      }
+
+      .session-card.stopped.active {
+        border-color: #aab4c2;
+        box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.1);
       }
 
       .task-main {
@@ -251,6 +277,11 @@
         background: var(--claude);
       }
 
+      .session-card.stopped .agent {
+        filter: grayscale(0.75);
+        opacity: 0.58;
+      }
+
       .name {
         min-width: 0;
         font-size: 14px;
@@ -273,6 +304,12 @@
         white-space: nowrap;
       }
 
+      .status.running {
+        border: 1px solid #bee3cf;
+        background: #edf8f2;
+        color: var(--green);
+      }
+
       .status.recent {
         background: #fff8e8;
         color: #a66700;
@@ -280,6 +317,7 @@
 
       .status.stopped,
       .status.archived {
+        border: 1px solid #d4dbe5;
         background: #f1f5f9;
         color: #596579;
       }
@@ -291,6 +329,11 @@
         background: currentColor;
       }
 
+      .status.stopped .dot {
+        background: transparent;
+        border: 1px solid currentColor;
+      }
+
       .summary {
         color: #3b4657;
         font-size: 12px;
@@ -298,6 +341,17 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      .session-card.stopped .name,
+      .session-card.stopped .summary {
+        color: #6e7a8b;
+      }
+
+      .session-card.stopped .chip {
+        border-color: #d6dde7;
+        color: #7b8797;
+        background: #f3f6fa;
       }
 
       .meta-row {
@@ -586,7 +640,8 @@
         }
         for (const task of visibleTasks) {
           const card = document.createElement("article");
-          card.className = `session-card${selected && task.id === selected.id ? " active" : ""}`;
+          const cardState = task.status === "stopped" ? "stopped" : "running";
+          card.className = `session-card ${cardState}${selected && task.id === selected.id ? " active" : ""}`;
           card.tabIndex = 0;
           card.innerHTML = `
             <div class="task-main">
@@ -597,7 +652,7 @@
               </div>
             </div>
             <div class="task-side">
-              <div class="status ${task.status === "stopped" ? "stopped" : task.bucket === "recent" ? "recent" : task.bucket === "archived" ? "archived" : ""}"><span class="dot"></span>${statusLabel(task.status)}</div>
+              <div class="status ${task.status === "stopped" ? "stopped" : "running"}"><span class="dot"></span>${statusLabel(task.status)}</div>
             </div>
             <div class="meta-row">
               <span class="chip">${task.agent}</span>
