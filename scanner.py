@@ -9,6 +9,10 @@ from typing import Dict, Iterable, List, Optional
 
 
 AGENTS = ("codex", "gemini", "claude")
+PLACEHOLDER_PROMPTS = {
+    "Find and fix a bug in @filename",
+    "Run /review on my current changes",
+}
 
 
 def run_command(args: List[str]) -> str:
@@ -139,8 +143,14 @@ def clean_terminal_text(text: str) -> str:
     return text.strip()
 
 
+def is_placeholder_prompt(content: str) -> bool:
+    return content.strip() in PLACEHOLDER_PROMPTS
+
+
 def is_meaningful_preview_line(line: str) -> bool:
     if len(line) < 3:
+        return False
+    if is_placeholder_prompt(line):
         return False
     lowered = line.lower()
     ignored = (
@@ -225,13 +235,6 @@ def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
             return False
         return not re.match(r"^\d+\.\s+", content)
 
-    def is_placeholder_prompt(content: str) -> bool:
-        placeholders = {
-            "Find and fix a bug in @filename",
-            "Run /review on my current changes",
-        }
-        return content in placeholders
-
     def is_tool_or_status_line(line: str) -> bool:
         stripped = line.strip()
         lowered = stripped.lower()
@@ -308,10 +311,23 @@ def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
     return list(reversed(messages))
 
 
+def latest_user_request_summary(messages: List[Dict[str, str]], fallback: str) -> str:
+    for message in messages:
+        if message.get("speaker") != "사용자":
+            continue
+        text = " ".join(str(message.get("text", "")).split())
+        if not text:
+            continue
+        return f"{text[:157].rstrip()}..." if len(text) > 160 else text
+    return fallback
+
+
 def context_summary(context: str, fallback: str) -> str:
     def useful_for_summary(line: str) -> bool:
         stripped = line.strip()
         if not stripped:
+            return False
+        if is_placeholder_prompt(stripped):
             return False
         lowered = stripped.lower()
         prefixes = ("ran ", "explored", "searching", "searched", "read ", "edited ", "thread:", "reason:", "$ ")
@@ -387,6 +403,7 @@ def build_tasks(
         context_messages = qa_messages_from_preview(preview)
         context_text = qa_context_from_preview(preview, summary)
         summary_context = conversation_context_from_preview(preview, summary)
+        fallback_context_summary = context_summary(summary_context, summary)
         tasks.append(
             {
                 "id": task_id("tmux", tmux_target, agent_proc["pid"]),
@@ -396,7 +413,7 @@ def build_tasks(
                 "badge": agent[0].upper(),
                 "title": make_title(agent, pane["path"], pane["session"]),
                 "summary": summary,
-                "contextSummary": context_summary(summary_context, summary),
+                "contextSummary": latest_user_request_summary(context_messages, fallback_context_summary),
                 "contextText": context_text,
                 "contextMessages": context_messages,
                 "path": pane["path"],

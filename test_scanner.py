@@ -56,7 +56,7 @@ class ScannerTest(unittest.TestCase):
             tasks[0]["contextText"],
             "사용자\n지금 실행중인 AI 작업 대시보드를 만들고 있어\n오른쪽에 작업 힌트를 크게 보여줘",
         )
-        self.assertEqual(tasks[0]["contextSummary"], "오른쪽에 작업 힌트를 크게 보여줘")
+        self.assertEqual(tasks[0]["contextSummary"], "지금 실행중인 AI 작업 대시보드를 만들고 있어 오른쪽에 작업 힌트를 크게 보여줘")
         self.assertEqual(tasks[0]["path"], "/Users/kybee/workspace/toy/tarot")
         self.assertIn("세션에서 감지됨", tasks[0]["summary"])
         self.assertTrue(tasks[0]["hasPreview"])
@@ -227,6 +227,59 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual([message["text"] for message in messages], ["최근 답변", "최근 질문", "첫 답변", "첫 질문"])
         self.assertEqual([message["time"] for message in messages], ["", "", "", ""])
 
+    def test_task_summary_uses_latest_user_request_not_placeholder(self):
+        tasks = build_tasks(
+            tmux_rows=["web|0.0|%8|/Users/kybee/workspace/toy|node|1"],
+            ps_rows=[
+                {"pid": "1", "ppid": "0", "etime": "00:10", "command": "-zsh"},
+                {"pid": "2", "ppid": "1", "etime": "00:09", "pcpu": "0.0", "command": "node /opt/homebrew/bin/codex"},
+            ],
+            cwd_by_pid={},
+            preview_by_pane={
+                "%8": """
+                › 실제로 가운데에 보여야 하는 마지막 요청입니다
+                • 반영하겠습니다.
+
+                › Run /review on my current changes
+                """
+            },
+        )
+
+        self.assertEqual(tasks[0]["contextSummary"], "실제로 가운데에 보여야 하는 마지막 요청입니다")
+
+    def test_task_summary_does_not_use_placeholder_when_no_user_request_exists(self):
+        tasks = build_tasks(
+            tmux_rows=["web|0.0|%8|/Users/kybee/workspace/toy|node|1"],
+            ps_rows=[
+                {"pid": "1", "ppid": "0", "etime": "00:10", "command": "-zsh"},
+                {"pid": "2", "ppid": "1", "etime": "00:09", "pcpu": "0.0", "command": "node /opt/homebrew/bin/codex"},
+            ],
+            cwd_by_pid={},
+            preview_by_pane={
+                "%8": """
+                › Run /review on my current changes
+                  gpt-5.5 high · ~/workspace/toy · Main [default]
+                """
+            },
+        )
+
+        self.assertNotEqual(tasks[0]["contextSummary"], "Run /review on my current changes")
+        self.assertEqual(tasks[0]["contextSummary"], "toy 프로젝트 세션에서 감지됨 · 0.0")
+
+    def test_task_summary_truncates_long_user_request(self):
+        long_request = "가" * 170
+        tasks = build_tasks(
+            tmux_rows=["web|0.0|%8|/Users/kybee/workspace/toy|node|1"],
+            ps_rows=[
+                {"pid": "1", "ppid": "0", "etime": "00:10", "command": "-zsh"},
+                {"pid": "2", "ppid": "1", "etime": "00:09", "pcpu": "0.0", "command": "node /opt/homebrew/bin/codex"},
+            ],
+            cwd_by_pid={},
+            preview_by_pane={"%8": f"› {long_request}"},
+        )
+
+        self.assertEqual(tasks[0]["contextSummary"], f"{'가' * 157}...")
+
     def test_qa_context_ignores_codex_placeholder_prompt(self):
         context = qa_context_from_preview(
             """
@@ -272,7 +325,7 @@ class ScannerTest(unittest.TestCase):
             "fallback",
         )
 
-        self.assertEqual(context, "Run /review on my current changes")
+        self.assertEqual(context, "fallback")
 
     def test_context_summary_prefers_human_request_over_tool_lines(self):
         summary = context_summary(
