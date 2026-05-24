@@ -32,26 +32,30 @@ class IndexBehaviorTest(unittest.TestCase):
         self.assertNotIn("window.setInterval", markup)
         self.assertNotIn("AUTO_REFRESH_INTERVAL_MS", markup)
 
-    def test_workspace_folder_groups_use_project_directory(self):
+    def test_home_folder_groups_use_path_after_tilde(self):
         markup = read_index()
         folder_group = extract_js_function(markup, "folderGroup")
         script = f"""
           {folder_group}
           const groups = [
-            folderGroup("/Users/kybee/workspace/toy/tarot"),
-            folderGroup("/Users/kybee/workspace/toy/ai-monitor"),
+            folderGroup("/Users/example/projects/alpha"),
+            folderGroup("/Users/example/projects/beta"),
+            folderGroup("/Users/example/projects"),
           ];
           console.log(JSON.stringify(groups));
         """
         output = subprocess.check_output(["node", "-e", script], text=True)
         groups = json.loads(output)
 
-        self.assertEqual(groups[0]["key"], "workspace:toy/tarot")
-        self.assertEqual(groups[0]["name"], "toy/tarot")
-        self.assertEqual(groups[0]["path"], "/Users/kybee/workspace/toy/tarot")
-        self.assertEqual(groups[1]["key"], "workspace:toy/ai-monitor")
-        self.assertEqual(groups[1]["name"], "toy/ai-monitor")
-        self.assertEqual(groups[1]["path"], "/Users/kybee/workspace/toy/ai-monitor")
+        self.assertEqual(groups[0]["key"], "home:projects/alpha")
+        self.assertEqual(groups[0]["name"], "projects/alpha")
+        self.assertEqual(groups[0]["path"], "~/projects/alpha")
+        self.assertEqual(groups[1]["key"], "home:projects/beta")
+        self.assertEqual(groups[1]["name"], "projects/beta")
+        self.assertEqual(groups[1]["path"], "~/projects/beta")
+        self.assertEqual(groups[2]["key"], "home:projects")
+        self.assertEqual(groups[2]["name"], "projects")
+        self.assertEqual(groups[2]["path"], "~/projects")
         self.assertNotEqual(groups[0]["key"], groups[1]["key"])
 
 
