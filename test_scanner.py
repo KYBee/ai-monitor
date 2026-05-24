@@ -8,6 +8,7 @@ from scanner import (
     build_tasks,
     context_summary,
     conversation_context_from_preview,
+    normalize_context_messages,
     parse_ps,
     qa_context_from_preview,
     terminal_context_from_preview,
@@ -170,6 +171,27 @@ class ScannerTest(unittest.TestCase):
 
         self.assertEqual([message["speaker"] for message in messages], ["사용자", "Codex", "사용자"])
         self.assertEqual([message["text"] for message in messages], ["최근 요청", "답변입니다", "첫 요청"])
+
+    def test_local_context_ignores_skills_placeholder_prompt(self):
+        messages = [
+            {"speaker": "사용자", "text": "Use /skills to list available skills", "_sort": 2},
+            {"speaker": "Gemini", "text": "실제 답변", "_sort": 1},
+            {"speaker": "사용자", "text": "실제 요청", "_sort": 0},
+        ]
+
+        filtered = normalize_context_messages(messages)
+        self.assertEqual([message["text"] for message in filtered], ["실제 답변", "실제 요청"])
+
+    def test_qa_context_ignores_skills_placeholder_prompt(self):
+        context = qa_context_from_preview(
+            """
+            • 실제 답변
+
+            › Use /skills to list available skills
+            """
+        )
+
+        self.assertEqual(context, "Codex\n실제 답변")
 
     def test_reads_claude_context_from_project_history(self):
         with tempfile.TemporaryDirectory() as home:

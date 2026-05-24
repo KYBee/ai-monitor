@@ -14,6 +14,7 @@ AGENTS = ("codex", "gemini", "claude")
 PLACEHOLDER_PROMPTS = {
     "Find and fix a bug in @filename",
     "Run /review on my current changes",
+    "Use /skills to list available skills",
 }
 
 
