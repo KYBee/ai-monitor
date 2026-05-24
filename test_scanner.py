@@ -1,6 +1,10 @@
+import json
+import os
+import tempfile
 import unittest
 
 from scanner import (
+    agent_context_from_local_history,
     build_tasks,
     context_summary,
     conversation_context_from_preview,
@@ -88,6 +92,118 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(tasks[0]["path"], "/Users/kybee/workspace/toy/GaodeLink")
         self.assertIn("일반 프로세스로 실행 중", tasks[0]["summary"])
         self.assertFalse(tasks[0]["hasPreview"])
+
+    def test_non_tmux_process_uses_local_context_messages(self):
+        tasks = build_tasks(
+            tmux_rows=[],
+            ps_rows=[
+                {
+                    "pid": "200",
+                    "ppid": "1",
+                    "etime": "00:01:00",
+                    "pcpu": "0.0",
+                    "command": "node /opt/homebrew/bin/gemini",
+                }
+            ],
+            cwd_by_pid={"200": "/Users/kybee"},
+            process_context_by_pid={
+                "200": [
+                    {"speaker": "Gemini", "text": "최근 답변입니다", "time": ""},
+                    {"speaker": "사용자", "text": "최근 요청입니다", "time": ""},
+                ]
+            },
+        )
+
+        self.assertEqual(tasks[0]["contextSummary"], "최근 요청입니다")
+        self.assertEqual(tasks[0]["contextText"], "사용자\n최근 요청입니다\n\nGemini\n최근 답변입니다")
+        self.assertEqual([message["speaker"] for message in tasks[0]["contextMessages"]], ["Gemini", "사용자"])
+        self.assertTrue(tasks[0]["hasPreview"])
+
+    def test_reads_gemini_context_from_project_history(self):
+        with tempfile.TemporaryDirectory() as home:
+            project_path = os.path.join(home, "project")
+            os.makedirs(project_path)
+            chat_dir = os.path.join(home, ".gemini", "tmp", "project-key", "chats")
+            os.makedirs(chat_dir)
+            with open(os.path.join(home, ".gemini", "projects.json"), "w", encoding="utf-8") as projects_file:
+                json.dump({"projects": {project_path: "project-key"}}, projects_file)
+            with open(os.path.join(chat_dir, "session.jsonl"), "w", encoding="utf-8") as chat_file:
+                chat_file.write(json.dumps({"type": "user", "timestamp": "2026-05-24T12:00:00Z", "content": [{"text": "첫 질문"}]}) + "\n")
+                chat_file.write(json.dumps({"type": "gemini", "timestamp": "2026-05-24T12:01:00Z", "content": "첫 답변"}) + "\n")
+                chat_file.write(json.dumps({"type": "user", "timestamp": "2026-05-24T12:02:00Z", "content": [{"text": "최근 질문"}]}) + "\n")
+
+            messages = agent_context_from_local_history("gemini", project_path, home)
+
+        self.assertEqual([message["speaker"] for message in messages], ["사용자", "Gemini", "사용자"])
+        self.assertEqual([message["text"] for message in messages], ["최근 질문", "첫 답변", "첫 질문"])
+
+    def test_reads_codex_context_from_project_history(self):
+        with tempfile.TemporaryDirectory() as home:
+            project_path = os.path.join(home, "project")
+            os.makedirs(project_path)
+            codex_dir = os.path.join(home, ".codex")
+            session_dir = os.path.join(codex_dir, "sessions", "2026", "05", "24")
+            os.makedirs(session_dir)
+            session_id = "session-1"
+            with open(os.path.join(codex_dir, "history.jsonl"), "w", encoding="utf-8") as history_file:
+                history_file.write(json.dumps({"session_id": session_id, "ts": 1779637000, "text": "첫 요청"}) + "\n")
+                history_file.write(json.dumps({"session_id": session_id, "ts": 1779637060, "text": "최근 요청"}) + "\n")
+            with open(os.path.join(session_dir, "rollout.jsonl"), "w", encoding="utf-8") as session_file:
+                session_file.write(json.dumps({"timestamp": "2026-05-24T12:00:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": project_path}}) + "\n")
+                session_file.write(
+                    json.dumps(
+                        {
+                            "timestamp": "2026-05-24T15:37:10Z",
+                            "type": "response_item",
+                            "payload": {
+                                "type": "message",
+                                "role": "assistant",
+                                "phase": "final_answer",
+                                "content": [{"type": "output_text", "text": "답변입니다"}],
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+
+            messages = agent_context_from_local_history("codex", project_path, home)
+
+        self.assertEqual([message["speaker"] for message in messages], ["사용자", "Codex", "사용자"])
+        self.assertEqual([message["text"] for message in messages], ["최근 요청", "답변입니다", "첫 요청"])
+
+    def test_reads_claude_context_from_project_history(self):
+        with tempfile.TemporaryDirectory() as home:
+            project_path = os.path.join(home, "project")
+            os.makedirs(project_path)
+            encoded_project = project_path.replace(os.sep, "-")
+            chat_dir = os.path.join(home, ".claude", "projects", encoded_project)
+            os.makedirs(chat_dir)
+            with open(os.path.join(chat_dir, "session.jsonl"), "w", encoding="utf-8") as chat_file:
+                chat_file.write(
+                    json.dumps(
+                        {
+                            "timestamp": "2026-05-24T12:00:00Z",
+                            "type": "user",
+                            "message": {"role": "user", "content": [{"type": "text", "text": "Claude 질문"}]},
+                        }
+                    )
+                    + "\n"
+                )
+                chat_file.write(
+                    json.dumps(
+                        {
+                            "timestamp": "2026-05-24T12:01:00Z",
+                            "type": "assistant",
+                            "message": {"role": "assistant", "content": [{"type": "text", "text": "Claude 답변"}]},
+                        }
+                    )
+                    + "\n"
+                )
+
+            messages = agent_context_from_local_history("claude", project_path, home)
+
+        self.assertEqual([message["speaker"] for message in messages], ["Claude", "사용자"])
+        self.assertEqual([message["text"] for message in messages], ["Claude 답변", "Claude 질문"])
 
     def test_deduplicates_process_already_represented_by_tmux(self):
         tmux_rows = [

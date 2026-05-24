@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
 import subprocess
 from collections import defaultdict
+from datetime import datetime
 from typing import Dict, Iterable, List, Optional
 
 
@@ -131,6 +133,240 @@ def process_summary(path: str, pid: str) -> str:
     return f"{project_name(path)} 프로젝트에서 일반 프로세스로 실행 중 · PID {pid}"
 
 
+def iter_jsonl(path: str):
+    try:
+        with open(path, "r", encoding="utf-8") as jsonl_file:
+            for line in jsonl_file:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return
+
+
+def recent_jsonl_files(root: str, limit: int = 80) -> List[str]:
+    files = []
+    if not os.path.isdir(root):
+        return files
+    for current_root, _, names in os.walk(root):
+        for name in names:
+            if not name.endswith(".jsonl"):
+                continue
+            path = os.path.join(current_root, name)
+            try:
+                files.append((os.path.getmtime(path), path))
+            except OSError:
+                continue
+    files.sort(reverse=True)
+    return [path for _, path in files[:limit]]
+
+
+def parse_timestamp(value) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str) or not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def format_message_time(sort_value: float) -> str:
+    if not sort_value:
+        return ""
+    return datetime.fromtimestamp(sort_value).strftime("%H:%M")
+
+
+def normalize_context_messages(messages: List[Dict[str, object]]) -> List[Dict[str, str]]:
+    normalized = []
+    seen = set()
+    for message in sorted(messages, key=lambda item: float(item.get("_sort", 0.0)), reverse=True):
+        text = str(message.get("text", "")).strip()
+        speaker = str(message.get("speaker", "")).strip()
+        if not speaker or not text:
+            continue
+        if text.startswith("<turn_aborted>"):
+            continue
+        if is_placeholder_prompt(text):
+            continue
+        identity = (speaker, text)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        sort_value = float(message.get("_sort", 0.0))
+        normalized.append(
+            {
+                "speaker": speaker,
+                "text": text,
+                "time": str(message.get("time") or format_message_time(sort_value)),
+            }
+        )
+    return normalized
+
+
+def context_text_from_messages(messages: List[Dict[str, str]], fallback: str) -> str:
+    if not messages:
+        return fallback
+    chronological = list(reversed(messages))
+    return "\n\n".join(f"{message['speaker']}\n{message['text']}" for message in chronological)
+
+
+def content_text(content) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if text:
+                    parts.append(str(text))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(parts).strip()
+    return ""
+
+
+def project_paths_match(path: str, candidate: str) -> bool:
+    if not path or not candidate:
+        return False
+    try:
+        path = os.path.realpath(path)
+        candidate = os.path.realpath(candidate)
+    except OSError:
+        pass
+    return path == candidate
+
+
+def codex_history_messages(home_dir: str) -> Dict[str, List[Dict[str, object]]]:
+    history_path = os.path.join(home_dir, ".codex", "history.jsonl")
+    messages_by_session: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    for item in iter_jsonl(history_path):
+        session_id = item.get("session_id")
+        text = str(item.get("text", "")).strip()
+        if not session_id or not text:
+            continue
+        messages_by_session[session_id].append(
+            {
+                "speaker": "사용자",
+                "text": text,
+                "_sort": parse_timestamp(item.get("ts")),
+            }
+        )
+    return messages_by_session
+
+
+def codex_context_from_local_history(project_path: str, home_dir: str) -> List[Dict[str, str]]:
+    history_by_session = codex_history_messages(home_dir)
+    sessions_root = os.path.join(home_dir, ".codex", "sessions")
+    for path in recent_jsonl_files(sessions_root):
+        session_id = ""
+        session_cwd = ""
+        messages: List[Dict[str, object]] = []
+        for item in iter_jsonl(path):
+            item_type = item.get("type")
+            payload = item.get("payload") or {}
+            if item_type == "session_meta":
+                session_id = str(payload.get("id") or "")
+                session_cwd = str(payload.get("cwd") or "")
+                continue
+            if item_type != "response_item" or payload.get("type") != "message":
+                continue
+            role = payload.get("role")
+            text = content_text(payload.get("content"))
+            if not text:
+                continue
+            if role == "user":
+                messages.append({"speaker": "사용자", "text": text, "_sort": parse_timestamp(item.get("timestamp"))})
+            elif role == "assistant" and payload.get("phase") == "final_answer":
+                messages.append({"speaker": "Codex", "text": text, "_sort": parse_timestamp(item.get("timestamp"))})
+        if not project_paths_match(project_path, session_cwd):
+            continue
+        messages.extend(history_by_session.get(session_id, []))
+        normalized = normalize_context_messages(messages)
+        if normalized:
+            return normalized
+    return []
+
+
+def gemini_project_key(project_path: str, home_dir: str) -> str:
+    projects_path = os.path.join(home_dir, ".gemini", "projects.json")
+    try:
+        with open(projects_path, "r", encoding="utf-8") as projects_file:
+            payload = json.load(projects_file)
+    except (OSError, json.JSONDecodeError):
+        return project_name(project_path)
+    projects = payload.get("projects") if isinstance(payload, dict) else {}
+    if not isinstance(projects, dict):
+        return project_name(project_path)
+    best_path = ""
+    best_key = ""
+    real_project = os.path.realpath(project_path)
+    for path, key in projects.items():
+        real_path = os.path.realpath(str(path))
+        if real_project == real_path or real_project.startswith(real_path + os.sep):
+            if len(real_path) > len(best_path):
+                best_path = real_path
+                best_key = str(key)
+    return best_key or project_name(project_path)
+
+
+def gemini_context_from_local_history(project_path: str, home_dir: str) -> List[Dict[str, str]]:
+    key = gemini_project_key(project_path, home_dir)
+    chats_root = os.path.join(home_dir, ".gemini", "tmp", key, "chats")
+    files = recent_jsonl_files(chats_root, limit=20)
+    if not files:
+        return []
+    messages: List[Dict[str, object]] = []
+    for item in iter_jsonl(files[0]):
+        item_type = item.get("type")
+        sort_value = parse_timestamp(item.get("timestamp"))
+        if item_type == "user":
+            text = content_text(item.get("content"))
+            if text:
+                messages.append({"speaker": "사용자", "text": text, "_sort": sort_value})
+        elif item_type == "gemini":
+            text = content_text(item.get("content"))
+            if text:
+                messages.append({"speaker": "Gemini", "text": text, "_sort": sort_value})
+    return normalize_context_messages(messages)
+
+
+def claude_context_from_local_history(project_path: str, home_dir: str) -> List[Dict[str, str]]:
+    encoded_project = project_path.replace(os.sep, "-")
+    chats_root = os.path.join(home_dir, ".claude", "projects", encoded_project)
+    files = recent_jsonl_files(chats_root, limit=20)
+    if not files:
+        return []
+    messages: List[Dict[str, object]] = []
+    for item in iter_jsonl(files[0]):
+        message = item.get("message") if isinstance(item.get("message"), dict) else {}
+        role = message.get("role") or item.get("type")
+        text = content_text(message.get("content") or item.get("content"))
+        sort_value = parse_timestamp(item.get("timestamp"))
+        if role == "user" and text:
+            messages.append({"speaker": "사용자", "text": text, "_sort": sort_value})
+        elif role == "assistant" and text:
+            messages.append({"speaker": "Claude", "text": text, "_sort": sort_value})
+    return normalize_context_messages(messages)
+
+
+def agent_context_from_local_history(agent: str, project_path: str, home_dir: Optional[str] = None) -> List[Dict[str, str]]:
+    home_dir = home_dir or os.path.expanduser("~")
+    if agent == "codex":
+        return codex_context_from_local_history(project_path, home_dir)
+    if agent == "gemini":
+        return gemini_context_from_local_history(project_path, home_dir)
+    if agent == "claude":
+        return claude_context_from_local_history(project_path, home_dir)
+    return []
+
+
 def clean_preview_line(line: str) -> str:
     line = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line)
     line = line.strip()
@@ -200,8 +436,7 @@ def qa_context_from_preview(preview: str, fallback: str = "") -> str:
     messages = qa_messages_from_preview(preview)
     if not messages:
         return fallback
-    chronological = list(reversed(messages))
-    return "\n\n".join(f"{message['speaker']}\n{message['text']}" for message in chronological)
+    return context_text_from_messages(messages, fallback)
 
 
 def qa_messages_from_preview(preview: str) -> List[Dict[str, str]]:
@@ -359,8 +594,10 @@ def build_tasks(
     ps_rows: Iterable[Dict[str, str]],
     cwd_by_pid: Dict[str, str],
     preview_by_pane: Optional[Dict[str, str]] = None,
+    process_context_by_pid: Optional[Dict[str, List[Dict[str, str]]]] = None,
 ) -> List[Dict[str, object]]:
     preview_by_pane = preview_by_pane or {}
+    process_context_by_pid = process_context_by_pid or {}
     children_by_ppid: Dict[str, List[Dict[str, str]]] = defaultdict(list)
     ps_by_pid = {}
     for proc in ps_rows:
@@ -439,6 +676,8 @@ def build_tasks(
             continue
         path = cwd_by_pid.get(proc["pid"], "")
         summary = process_summary(path, proc["pid"])
+        context_messages = process_context_by_pid.get(proc["pid"], [])
+        context_text = context_text_from_messages(context_messages, summary)
         tasks.append(
             {
                 "id": task_id("process", proc["pid"], proc["pid"]),
@@ -448,9 +687,9 @@ def build_tasks(
                 "badge": agent[0].upper(),
                 "title": make_title(agent, path),
                 "summary": summary,
-                "contextSummary": summary,
-                "contextText": summary,
-                "contextMessages": [],
+                "contextSummary": latest_user_request_summary(context_messages, summary),
+                "contextText": context_text,
+                "contextMessages": context_messages,
                 "path": path or "cwd unavailable",
                 "source": "process",
                 "tmux": "",
@@ -458,7 +697,7 @@ def build_tasks(
                 "pid": proc["pid"],
                 "etime": proc.get("etime", ""),
                 "command": proc["command"],
-                "hasPreview": False,
+                "hasPreview": bool(context_messages),
                 "openCommand": f"ps -p {proc['pid']} -o pid,ppid,etime,pcpu,command",
                 "preview": "",
             }
@@ -494,6 +733,15 @@ def scan_tasks(include_preview: bool = False) -> List[Dict[str, object]]:
         if detect_agent(proc["command"]):
             cwd_by_pid[proc["pid"]] = get_process_cwd(proc["pid"])
 
+    process_context_by_pid = {}
+    if include_preview:
+        for proc in ps_rows:
+            agent = detect_agent(proc["command"])
+            if not agent:
+                continue
+            path = cwd_by_pid.get(proc["pid"], "")
+            process_context_by_pid[proc["pid"]] = agent_context_from_local_history(agent, path)
+
     preview_by_pane = {}
     if include_preview:
         for row in tmux_rows:
@@ -501,4 +749,4 @@ def scan_tasks(include_preview: bool = False) -> List[Dict[str, object]]:
             if pane:
                 preview_by_pane[pane["pane_id"]] = capture_preview(pane["pane_id"])
 
-    return build_tasks(tmux_rows, ps_rows, cwd_by_pid, preview_by_pane)
+    return build_tasks(tmux_rows, ps_rows, cwd_by_pid, preview_by_pane, process_context_by_pid)
