@@ -546,6 +546,10 @@
           grid-template-columns: 1fr;
         }
 
+        .pane {
+          border-right: 0;
+        }
+
         .groups {
           height: auto;
           display: flex;
@@ -559,6 +563,30 @@
         .pane.group-pane {
           border-right: 0;
           border-bottom: 1px solid var(--line);
+        }
+
+        .sessions {
+          height: auto;
+          max-height: 42vh;
+        }
+
+        .pane.detail-pane {
+          display: block;
+          border-top: 1px solid var(--line);
+        }
+
+        .detail {
+          height: auto;
+          padding: 12px;
+        }
+
+        .detail-head {
+          margin-bottom: 12px;
+        }
+
+        .chat-log {
+          min-height: 260px;
+          max-height: 56vh;
         }
       }
     </style>
