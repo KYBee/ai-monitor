@@ -32,6 +32,16 @@ class IndexBehaviorTest(unittest.TestCase):
         self.assertNotIn("window.setInterval", markup)
         self.assertNotIn("AUTO_REFRESH_INTERVAL_MS", markup)
 
+    def test_mobile_layout_keeps_conversation_detail_visible(self):
+        markup = read_index()
+        mobile_media_start = markup.index("@media (max-width: 720px)")
+        mobile_css = markup[mobile_media_start:]
+
+        self.assertIn(".pane.detail-pane", mobile_css)
+        self.assertIn("display: block", mobile_css)
+        self.assertIn(".chat-log", mobile_css)
+        self.assertIn("max-height", mobile_css)
+
     def test_home_folder_groups_use_path_after_tilde(self):
         markup = read_index()
         folder_group = extract_js_function(markup, "folderGroup")
